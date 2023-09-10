@@ -885,9 +885,9 @@ class GCDTalkerExt(ComicTalker):
             # Will presume titles go with synopsis
             for i, title in enumerate(issue["story_titles"]):
                 if title and issue["synopses"][i]:
-                    md.description += f"{title}: {issue['synopses'][i]}\n\n"
+                    md.description += f"{title}: {issue['synopses'][i]}\r\n\r\n"
         else:
-            md.description = "\n\n".join(issue["synopses"])
+            md.description = "\r\n\r\n".join(issue["synopses"])
 
         md.web_link = urljoin(self.website, f"issue/{issue['id']}")
 
