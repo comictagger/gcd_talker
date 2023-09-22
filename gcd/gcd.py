@@ -36,7 +36,7 @@ from comictalker.comiccacher import Series as CCSeries
 from comictalker.comictalker import ComicTalker, TalkerDataError, TalkerNetworkError
 from typing_extensions import TypedDict
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(f"comictalker.{__name__}")
 
 
 class GCDSeries(TypedDict, total=False):
@@ -566,8 +566,6 @@ class GCDTalkerExt(ComicTalker):
     def _format_search_results(self, search_results: list[GCDSeries]) -> list[ComicSeries]:
         formatted_results = []
         for record in search_results:
-            # TODO Add genres and volume when fields have been added to ComicSeries
-
             # Option to use sort name?
 
             formatted_results.append(
@@ -869,7 +867,8 @@ class GCDTalkerExt(ComicTalker):
         elif not title and issue.get("story_titles"):
             md.title = "; ".join(issue["story_titles"])
 
-        md.genres = issue.get("genres")
+        if issue.get("genres"):
+            md.genres = list(set(issue["genres"]))
 
         # TODO price?
 
