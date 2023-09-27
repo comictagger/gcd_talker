@@ -578,7 +578,6 @@ class GCDTalkerExt(ComicTalker):
                     image_url=record.get("image", ""),
                     name=record["name"],
                     publisher=record["publisher_name"],
-                    genres=[],
                     format=None,
                     start_year=record["year_began"],
                 )
