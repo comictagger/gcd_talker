@@ -570,7 +570,7 @@ class GCDTalkerExt(ComicTalker):
 
             formatted_results.append(
                 ComicSeries(
-                    aliases=[],
+                    aliases=set(),
                     count_of_issues=record.get("count_of_issues"),
                     count_of_volumes=None,
                     description=record.get("notes"),
@@ -748,7 +748,6 @@ class GCDTalkerExt(ComicTalker):
                 con.text_factory = str
                 cur = con.cursor()
 
-                # TODO break genres into it's own query to use distinct?
                 # TODO break format out to make something sensible from it?
                 cur.execute(
                     "SELECT gcd_issue.id AS 'id', gcd_issue.key_date AS 'key_date', gcd_issue.number AS 'number', "
@@ -850,7 +849,7 @@ class GCDTalkerExt(ComicTalker):
 
         if issue.get("characters"):
             # Logan [disambiguation: Wolverine] - (name) James Howlett
-            md.characters = issue["characters"]
+            md.characters = set(issue["characters"])
 
         # TODO story_arcs can be taken from story_titles?
         # story_list: list = []
@@ -867,14 +866,14 @@ class GCDTalkerExt(ComicTalker):
             md.title = "; ".join(issue["story_titles"])
 
         if issue.get("genres"):
-            md.genres = list(set(issue["genres"]))
+            md.genres = set(issue["genres"])
 
         # TODO price?
 
         # TODO Figure out number of issues is valid? Use cancelled/ended?
         md.issue_count = utils.xlate_int(series["count_of_issues"])
 
-        # TODO Merge if notes and synopses, option?
+        # TODO Merge if notes and synopses, option? Will never happen?
         md.description = issue.get("issue_notes")
 
         if len(issue["synopses"]) == len(issue["story_titles"]):
