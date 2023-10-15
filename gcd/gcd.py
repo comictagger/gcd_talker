@@ -20,8 +20,8 @@ import argparse
 import json
 import logging
 import pathlib
-import sqlite3
 import re
+import sqlite3
 from typing import Any, Callable
 from urllib.parse import urljoin
 
@@ -93,9 +93,11 @@ class GCDTalkerExt(ComicTalker):
     website: str = "https://www.comics.org/"
     logo_url: str = "https://files1.comics.org/static/img/gcd_logo.aaf0e64616e2.png"
     attribution: str = f"Data from <a href='{website}'>{name}</a> (<a href='http://creativecommons.org/licenses/by/3.0/'>CCA license</a>)"
-    about: str = f"<a href='{website}'>{name}™</a> is an ongoing international project to build a detailed " \
-                 f"comic-book database that will be easy to use and understand, and also easy for contributors to " \
-                 f"add information to it."
+    about: str = (
+        f"<a href='{website}'>{name}™</a> is an ongoing international project to build a detailed "
+        f"comic-book database that will be easy to use and understand, and also easy for contributors to "
+        f"add information to it."
+    )
 
     def __init__(self, version: str, cache_folder: pathlib.Path):
         super().__init__(version, cache_folder)
@@ -118,11 +120,11 @@ class GCDTalkerExt(ComicTalker):
             help="Use the series start year as the volume number",
         )
         parser.add_setting(
-            f"--gcd-use-ongoing",
+            "--gcd-use-ongoing",
             default=False,
             action=argparse.BooleanOptionalAction,
             display_name="Use the ongoing issue count",
-            help="If a series is labelled as \"ongoing\", use the current issue count (otherwise empty)",
+            help='If a series is labelled as "ongoing", use the current issue count (otherwise empty)',
         )
         parser.add_setting(
             "--gcd-gui-covers",
@@ -388,16 +390,27 @@ class GCDTalkerExt(ComicTalker):
     def _match_format(self, string: str) -> str | None:
         # The publishing_format field is a free-text mess, try and make something useful
         word_list = [
-            "annual", "album", "anthology", "collection", "collect", "graphic novel",
-            "hardcover", "limited series", "one[-\s]?shot", "preview", "special",
-            "trade paper[\s]?back", "web[\s]?comic", "mini[-\s]?series"
+            "annual",
+            "album",
+            "anthology",
+            "collection",
+            r"collect.*",
+            "graphic novel",
+            "hardcover",
+            "limited series",
+            r"one[-\s]?shot",
+            "preview",
+            "special",
+            r"trade paper[\s]?back",
+            r"web[\s]?comic",
+            r"mini[-\s]?series",
         ]
 
-        pattern = r'\b(?:' + '|'.join(word_list) + r')\b'
+        pattern = r"\b(?:" + "|".join(word_list) + r")\b"
         match = re.search(pattern, string, re.IGNORECASE)
 
         if match:
-            if "collect" in match.group(0):
+            if "collect" in match.group(0).casefold():
                 return "Collection"
             return match.group(0).title()
         else:
@@ -561,13 +574,21 @@ class GCDTalkerExt(ComicTalker):
             gcd_issue["price"] = row_dict["price"]
             gcd_issue["isbn"] = row_dict["isbn"]
             gcd_issue["maturity_rating"] = row_dict["maturity_rating"]
-            gcd_issue["characters"] = row_dict["characters"].split("; ") if "characters" in row_dict and row_dict["characters"] else []
+            gcd_issue["characters"] = (
+                row_dict["characters"].split("; ") if "characters" in row_dict and row_dict["characters"] else []
+            )
             gcd_issue["country"] = row_dict["country"]
             gcd_issue["country_iso"] = row_dict["country_iso"]
-            gcd_issue["story_ids"] = row_dict["story_ids"].split("\n") if "story_ids" in row_dict and row_dict["story_ids"] else []
+            gcd_issue["story_ids"] = (
+                row_dict["story_ids"].split("\n") if "story_ids" in row_dict and row_dict["story_ids"] else []
+            )
             gcd_issue["language"] = row_dict["language"]
             gcd_issue["language_iso"] = row_dict["language_iso"]
-            gcd_issue["genres"] = [genre.strip().capitalize() for genre in row_dict.get("genres", "").split(";")] if "genres" in row_dict and row_dict["genres"] else []
+            gcd_issue["genres"] = (
+                [genre.strip().capitalize() for genre in row_dict.get("genres", "").split(";")]
+                if "genres" in row_dict and row_dict["genres"]
+                else []
+            )
             gcd_issue["credits"] = []
 
         return gcd_issue
@@ -785,11 +806,9 @@ class GCDTalkerExt(ComicTalker):
             for person in issue["credits"]:
                 md.add_credit(person["name"], person["gcd_role"])
 
-        # TODO series and title aliases? Not so much aliases but different languages
-        title = ""
-        if issue.get("issue_title"):
-            md.title = issue["issue_title"]
-        elif not title and issue.get("story_titles"):
+        # It's possible to have issue_title and story_titles
+        md.title = issue.get("issue_title")
+        if issue.get("story_titles"):
             md.title = "; ".join(issue["story_titles"])
 
         if issue.get("genres"):
@@ -808,7 +827,7 @@ class GCDTalkerExt(ComicTalker):
         if series["year_ended"] or self.use_ongoing_issue_count:
             md.issue_count = utils.xlate_int(series["count_of_issues"])
 
-        # TODO Merge if notes and synopses, option? Will never happen?
+        # TODO Merge if notes and synopses, option?
         md.description = issue.get("issue_notes")
 
         if len(issue["synopses"]) == len(issue["story_titles"]):
@@ -835,7 +854,7 @@ class GCDTalkerExt(ComicTalker):
         md.language = issue.get("language_iso")
         md.country = issue.get("country")
 
-        md.format = self._match_format(series.get("format"))
+        md.format = self._match_format(series.get("format", ""))
 
         md.maturity_rating = issue.get("maturity_rating")
 
