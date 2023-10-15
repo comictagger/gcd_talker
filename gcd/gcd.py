@@ -104,6 +104,8 @@ class GCDTalkerExt(ComicTalker):
         # Default settings
         self.db_file: str = ""
         self.use_series_start_as_volume: bool = False
+        self.prefer_story_titles: bool = False
+        self.combine_notes: bool = False
         self.use_ongoing_issue_count: bool = False
         self.currency: str = ""
         self.download_gui_covers: bool = False
@@ -125,6 +127,20 @@ class GCDTalkerExt(ComicTalker):
             action=argparse.BooleanOptionalAction,
             display_name="Use the ongoing issue count",
             help='If a series is labelled as "ongoing", use the current issue count (otherwise empty)',
+        )
+        parser.add_setting(
+            "--gcd-prefer-story-titles",
+            default=False,
+            action=argparse.BooleanOptionalAction,
+            display_name="Prefer the story title(s) over issue title",
+            help="Use the story title(s) even if there is an issue title",
+        )
+        parser.add_setting(
+            "--gcd-combine-notes",
+            default=False,
+            action=argparse.BooleanOptionalAction,
+            display_name="Combine series/issue notes along with synopses",
+            help="Prepend any series or issue notes along with any synopses",
         )
         parser.add_setting(
             "--gcd-gui-covers",
@@ -157,6 +173,8 @@ class GCDTalkerExt(ComicTalker):
         settings = super().parse_settings(settings)
 
         self.use_series_start_as_volume = settings["gcd_use_series_start_as_volume"]
+        self.prefer_story_titles = settings["gcd_prefer_story_titles"]
+        self.combine_notes = settings["gcd_combine_notes"]
         self.use_ongoing_issue_count = settings["gcd_use_ongoing"]
         self.currency = settings["gcd_currency"]
         self.download_gui_covers = settings["gcd_gui_covers"]
@@ -808,7 +826,7 @@ class GCDTalkerExt(ComicTalker):
 
         # It's possible to have issue_title and story_titles
         md.title = issue.get("issue_title")
-        if issue.get("story_titles"):
+        if self.prefer_story_titles and issue.get("story_titles"):
             md.title = "; ".join(issue["story_titles"])
 
         if issue.get("genres"):
@@ -827,18 +845,18 @@ class GCDTalkerExt(ComicTalker):
         if series["year_ended"] or self.use_ongoing_issue_count:
             md.issue_count = utils.xlate_int(series["count_of_issues"])
 
-        # TODO Merge if notes and synopses, option?
-        md.description = issue.get("issue_notes")
-
+        # Init as string for concat
+        md.description = ""
+        if self.combine_notes:
+            md.description = series.get("notes", "")
+            md.description += issue.get("issue_notes", "")
         if len(issue["synopses"]) == len(issue["story_titles"]):
-            # Init as string for concat
-            md.description = ""
-            # Will presume titles go with synopsis
+            # Will presume titles go with synopsis if there are the same number
             for i, title in enumerate(issue["story_titles"]):
                 if title and issue["synopses"][i]:
                     md.description += f"{title}: {issue['synopses'][i]}\r\n\r\n"
         else:
-            md.description = "\r\n\r\n".join(issue["synopses"])
+            md.description += "\r\n\r\n".join(issue["synopses"])
 
         md.web_link = urljoin(self.website, f"issue/{issue['id']}")
 
