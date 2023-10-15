@@ -90,6 +90,9 @@ class GCDTalkerExt(ComicTalker):
     website: str = "https://www.comics.org/"
     logo_url: str = "https://files1.comics.org/static/img/gcd_logo.aaf0e64616e2.png"
     attribution: str = f"Data from <a href='{website}'>{name}</a> (<a href='http://creativecommons.org/licenses/by/3.0/'>CCA license</a>)"
+    about: str = f"<a href='{website}'>{name}™</a> is an ongoing international project to build a detailed " \
+                 f"comic-book database that will be easy to use and understand, and also easy for contributors to " \
+                 f"add information to it."
 
     def __init__(self, version: str, cache_folder: pathlib.Path):
         super().__init__(version, cache_folder)
