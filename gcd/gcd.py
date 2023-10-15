@@ -219,24 +219,18 @@ class GCDTalkerExt(ComicTalker):
         if not literal:
             # Make the search fuzzier
             search_series_name = search_series_name.replace(" ", "%") + "%"
-        logger.info(f"{self.name} searching: {search_series_name}")
-
-        cvc = ComicCacher(self.cache_folder, self.version)
-        if not refresh_cache and not literal:
-            cached_search_results = cvc.get_search_results(self.id, series_name)
-
-            if len(cached_search_results) > 0:
-                return self._format_search_results([json.loads(x[0].data) for x in cached_search_results])
 
         results = []
 
+        logger.info(f"{self.name} searching: {search_series_name}")
+
         self.check_db_filename_not_empty()
+
         try:
             with sqlite3.connect(self.db_file) as con:
                 con.row_factory = sqlite3.Row
                 con.text_factory = str
                 cur = con.cursor()
-
                 cur.execute(
                     "SELECT gcd_series.id AS 'id', gcd_series.name AS 'series_name', "
                     "gcd_series.sort_name AS 'sort_name', gcd_series.notes AS 'notes', "
@@ -249,7 +243,6 @@ class GCDTalkerExt(ComicTalker):
                 )
                 rows = cur.fetchall()
 
-                # now process the results
                 for record in rows:
                     result = GCDSeries(
                         id=record["id"],
@@ -274,15 +267,6 @@ class GCDTalkerExt(ComicTalker):
             logger.debug(f"DB error: {e}")
             raise TalkerDataError(self.name, 0, str(e))
 
-        # Cache because fetching the cache will require all records
-        cvc.add_search_results(
-            self.id,
-            series_name,
-            [CCSeries(id=str(x["id"]), data=json.dumps(x).encode("utf-8")) for x in results],
-            False,
-        )
-
-        # Format result to ComicIssue
         formatted_search_results = self._format_search_results(results)
 
         return formatted_search_results
@@ -301,16 +285,7 @@ class GCDTalkerExt(ComicTalker):
         return comic_data
 
     def fetch_issues_in_series(self, series_id: str) -> list[GenericMetadata]:
-        cvc = ComicCacher(self.cache_folder, self.version)
-        cached_series_issues_result = cvc.get_series_issues_info(series_id, self.id)
-
         series = self._fetch_series_data(int(series_id))
-
-        # Is this a sane check? Could count_of_issues be entered before all issues?
-        if len(cached_series_issues_result) == series["count_of_issues"]:
-            return [
-                (self._map_comic_issue_to_metadata(json.loads(x[0].data), series)) for x in cached_series_issues_result
-            ]
 
         results: list[GCDIssue] = []
 
@@ -321,7 +296,6 @@ class GCDTalkerExt(ComicTalker):
                 con.row_factory = sqlite3.Row
                 con.text_factory = str
                 cur = con.cursor()
-                # TODO "... AND gcd_story.type_id=19" makes the query very slow
                 cur.execute(
                     "SELECT gcd_issue.id AS 'id', gcd_issue.number AS 'number', gcd_issue.key_date AS 'key_date',"
                     " gcd_issue.title AS 'issue_title', gcd_issue.series_id AS 'series_id', "
@@ -335,9 +309,7 @@ class GCDTalkerExt(ComicTalker):
                 )
                 rows = cur.fetchall()
 
-                # Compare issue count to rows? Is it possible for a mix of issues with stories and not?
                 if rows:
-                    # now process the results
                     for record in rows:
                         results.append(self._format_gcd_issue(record))
 
@@ -352,15 +324,6 @@ class GCDTalkerExt(ComicTalker):
             logger.debug(f"DB error: {e}")
             raise TalkerDataError(self.name, 0, str(e))
 
-        series = self._fetch_series_data(int(series_id))
-
-        cvc.add_issues_info(
-            self.id,
-            [CCIssue(id=str(x["id"]), series_id=series_id, data=json.dumps(x).encode("utf-8")) for x in results],
-            False,
-        )
-
-        # Format to expected output
         formatted_series_issues_result = [self._map_comic_issue_to_metadata(x, series) for x in results]
 
         return formatted_series_issues_result
@@ -368,10 +331,8 @@ class GCDTalkerExt(ComicTalker):
     def fetch_issues_by_series_issue_num_and_year(
         self, series_id_list: list[str], issue_number: str, year: int | None
     ) -> list[GenericMetadata]:
-        # Example CLI result: Batman (1940) #55 [DC Comics] (10/1949) - The Case of the 48 Jokers
         results: list[GenericMetadata] = []
         year_search = "%"
-
         if year:
             year_search = str(year) + "%"
 
@@ -385,19 +346,6 @@ class GCDTalkerExt(ComicTalker):
 
                 for vid in series_id_list:
                     series = self._fetch_series_data(int(vid))
-
-                    # TODO Use cache if possible? if row == cache else? only if download covers?
-                    # Use cache too for image url
-                    """cvc = ComicCacher(self.cache_folder, self.version)
-                    cached_series_issues_result = cvc.get_series_issues_info(series_id, self.id)
-
-                    series = self._fetch_series_data(int(series_id))[0]
-
-                    if len(cached_series_issues_result) == series.count_of_issues:
-                        return [
-                            (self._map_comic_issue_to_metadata(json.loads(x[0].data), series), x[1])
-                            for x in cached_series_issues_result
-                        ]"""
 
                     cur.execute(
                         "SELECT gcd_issue.id AS 'id', gcd_issue.key_date AS 'key_date', gcd_issue.number AS 'number', "
@@ -415,7 +363,6 @@ class GCDTalkerExt(ComicTalker):
                     rows = cur.fetchall()
 
                     if rows:
-                        # TODO add all issues found in a series to a list so it can be added to cache?
                         for record in rows:
                             issue = self._format_gcd_issue(record)
 
@@ -649,7 +596,6 @@ class GCDTalkerExt(ComicTalker):
                     image = self._find_series_image(series_id)
                     cover_download = True
 
-                # now process the results
                 result = GCDSeries(
                     id=row["id"],
                     name=row["series_name"],
@@ -763,7 +709,6 @@ class GCDTalkerExt(ComicTalker):
 
                 if row:
                     issue_result = self._format_gcd_issue(row, True)
-                    # It's possible an issue doesn't have "stories" so the above will be empty
                 else:
                     logger.debug(f"Issue ID {issue_id} not found")
                     raise TalkerDataError(self.name, 3, f"Issue ID {issue_id} not found")
@@ -787,7 +732,6 @@ class GCDTalkerExt(ComicTalker):
         else:
             issue_result["covers_downloaded"] = False
 
-        # How to handle covers downloaded or not? There could be no cover so "" doesn't mean it wasn't tried. Add flag?
         cvc.add_issues_info(
             self.id,
             [
@@ -818,9 +762,6 @@ class GCDTalkerExt(ComicTalker):
         if issue.get("characters"):
             # Logan [disambiguation: Wolverine] - (name) James Howlett
             md.characters = set(issue["characters"])
-
-        # TODO story_arcs can be taken from story_titles?
-        # story_list: list = []
 
         if issue.get("credits"):
             for person in issue["credits"]:
