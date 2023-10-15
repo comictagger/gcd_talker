@@ -61,11 +61,13 @@ class GCDIssue(TypedDict, total=False):
     series_id: int
     issue_notes: str
     volume: int
+    price: str
+    isbn: str
     maturity_rating: str
     country: str
     country_iso: str
     story_ids: list[str]  # CSV int - Used to gather credits from gcd_story_credit
-    characters: list[GCDCredit]
+    characters: list[str]
     language: str
     language_iso: str
     story_titles: list[str]  # combined gcd_story title_inferred and type_id for display title
@@ -99,6 +101,8 @@ class GCDTalkerExt(ComicTalker):
         # Default settings
         self.db_file: str = ""
         self.use_series_start_as_volume: bool = False
+        self.use_ongoing_issue_count: bool = False
+        self.currency: str = ""
         self.download_gui_covers: bool = False
         self.download_tag_covers: bool = False
 
@@ -111,6 +115,13 @@ class GCDTalkerExt(ComicTalker):
             action=argparse.BooleanOptionalAction,
             display_name="Use series start as volume",
             help="Use the series start year as the volume number",
+        )
+        parser.add_setting(
+            f"--gcd-use-ongoing",
+            default=False,
+            action=argparse.BooleanOptionalAction,
+            display_name="Use the ongoing issue count",
+            help="If a series is labelled as \"ongoing\", use the current issue count (otherwise empty)",
         )
         parser.add_setting(
             "--gcd-gui-covers",
@@ -126,6 +137,12 @@ class GCDTalkerExt(ComicTalker):
             display_name="Attempt to download covers for auto-tagging",
             help="Attempt to download covers for use with auto-tagging",
         )
+        parser.add_setting(
+            "--gcd-currency",
+            default="USD",
+            display_name="Preferred currency",
+            help="Preferred currency for price: USD, EUR, GBP, etc. (default: USD)",
+        )
         parser.add_setting(f"--{self.id}-key", file=False, cmdline=False)
         parser.add_setting(
             f"--{self.id}-url",
@@ -137,6 +154,8 @@ class GCDTalkerExt(ComicTalker):
         settings = super().parse_settings(settings)
 
         self.use_series_start_as_volume = settings["gcd_use_series_start_as_volume"]
+        self.use_ongoing_issue_count = settings["gcd_use_ongoing"]
+        self.currency = settings["gcd_currency"]
         self.download_gui_covers = settings["gcd_gui_covers"]
         self.download_tag_covers = settings["gcd_tag_covers"]
         self.db_file = settings["gcd_url"]
@@ -158,6 +177,8 @@ class GCDTalkerExt(ComicTalker):
             return "DB access failed", False
 
     def check_create_index(self) -> None:
+        self.check_db_filename_not_empty()
+
         # Without this index the current issue list query is VERY slow
         if not self.has_issue_id_type_id_index:
             try:
@@ -715,6 +736,7 @@ class GCDTalkerExt(ComicTalker):
                 cur.execute(
                     "SELECT gcd_issue.id AS 'id', gcd_issue.key_date AS 'key_date', gcd_issue.number AS 'number', "
                     "gcd_issue.title AS 'issue_title', gcd_issue.series_id AS 'series_id', "
+                    "gcd_issue.price AS 'price', gcd_issue.valid_isbn AS 'isbn', "
                     "gcd_issue.notes AS 'issue_notes', gcd_issue.volume AS 'volume', "
                     "gcd_issue.rating AS 'maturity_rating', gcd_story.characters AS 'characters', "
                     "stddata_country.name AS 'country', stddata_country.code AS 'country_iso', "
@@ -814,10 +836,18 @@ class GCDTalkerExt(ComicTalker):
         if issue.get("genres"):
             md.genres = set(issue["genres"])
 
-        # TODO price?
+        # Price mostly in format: 00.00 CUR; 00.00 CUR
+        if issue.get("price"):
+            prices = issue["price"].split(";")
+            for price in prices:
+                if price.casefold().endswith(self.currency.casefold()):
+                    md.price = utils.xlate_float(price)
 
-        # TODO Figure out number of issues is valid? Use cancelled/ended?
-        md.issue_count = utils.xlate_int(series["count_of_issues"])
+        if issue.get("isbn"):
+            md.identifier = issue["isbn"]
+
+        if series["year_ended"] or self.use_ongoing_issue_count:
+            md.issue_count = utils.xlate_int(series["count_of_issues"])
 
         # TODO Merge if notes and synopses, option? Will never happen?
         md.description = issue.get("issue_notes")
