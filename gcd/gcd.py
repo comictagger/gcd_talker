@@ -195,6 +195,9 @@ class GCDTalkerExt(ComicTalker):
         series_match_thresh: int = 90,
     ) -> list[ComicSeries]:
         search_series_name = utils.sanitize_title(series_name, literal)
+        if not literal:
+            # Make the search fuzzier
+            search_series_name = search_series_name.replace(" ", "%") + "%"
         logger.info(f"{self.name} searching: {search_series_name}")
 
         cvc = ComicCacher(self.cache_folder, self.version)
