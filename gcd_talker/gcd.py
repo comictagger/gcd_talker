@@ -87,7 +87,7 @@ class GCDCredit(TypedDict):
     gcd_role: str
 
 
-class GCDTalkerExt(ComicTalker):
+class GCDTalker(ComicTalker):
     name: str = "Grand Comics Database"
     id: str = "gcd"
     website: str = "https://www.comics.org/"
