@@ -826,7 +826,7 @@ class GCDTalker(ComicTalker):
 
         # It's possible to have issue_title and story_titles
         md.title = issue.get("issue_title")
-        if self.prefer_story_titles and issue.get("story_titles"):
+        if (self.prefer_story_titles or not md.title) and issue.get("story_titles"):
             md.title = "; ".join(issue["story_titles"])
 
         if issue.get("genres"):
