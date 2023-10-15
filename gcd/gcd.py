@@ -224,7 +224,7 @@ class GCDTalkerExt(ComicTalker):
                     "FROM gcd_publisher "
                     "LEFT JOIN gcd_series ON gcd_series.publisher_id=gcd_publisher.id "
                     "WHERE gcd_series.name LIKE ?",
-                    [series_name],
+                    [search_series_name],
                 )
                 rows = cur.fetchall()
 
