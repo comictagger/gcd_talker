@@ -301,14 +301,14 @@ class GCDTalkerExt(ComicTalker):
                 cur = con.cursor()
                 # TODO "... AND gcd_story.type_id=19" makes the query very slow
                 cur.execute(
-                    "SELECT gcd_issue.id AS 'id', gcd_issue.key_date AS 'key_date', gcd_issue.number AS 'number', "
-                    "gcd_issue.title AS 'issue_title', gcd_issue.series_id AS 'series_id', "
-                    "GROUP_CONCAT(CASE WHEN gcd_story.title IS NOT NULL AND gcd_story.title != '' THEN "
-                    "gcd_story.title END, '\n') AS 'story_titles' "
+                    "SELECT gcd_issue.id AS 'id', gcd_issue.number AS 'number', gcd_issue.key_date AS 'key_date',"
+                    " gcd_issue.title AS 'issue_title', gcd_issue.series_id AS 'series_id', "
+                    "GROUP_CONCAT(CASE WHEN gcd_story.title IS NOT NULL AND gcd_story.title != '' THEN gcd_story.title "
+                    "ELSE NULL END, '\n') AS 'story_titles' "
                     "FROM gcd_issue "
-                    "LEFT JOIN gcd_story ON gcd_story.issue_id=gcd_issue.id "
-                    "WHERE gcd_issue.series_id=? AND gcd_story.type_id=19 "
-                    "GROUP BY gcd_issue.id",
+                    "LEFT JOIN gcd_story ON gcd_story.issue_id = gcd_issue.id AND gcd_story.type_id = 19 "
+                    "WHERE gcd_issue.series_id = ? "
+                    "GROUP BY gcd_issue.number;",
                     [int(series_id)],
                 )
                 rows = cur.fetchall()
@@ -319,22 +319,9 @@ class GCDTalkerExt(ComicTalker):
                     for record in rows:
                         results.append(self._format_gcd_issue(record))
 
-                # It's possible an issue doesn't have "stories" so the above will be empty
+                # No issue(s) found
                 else:
-                    # Select only issue data without "stories"
-                    cur.execute(
-                        "SELECT gcd_issue.id AS 'id', gcd_issue.key_date AS 'key_date', gcd_issue.number AS 'number', "
-                        "gcd_issue.title AS 'issue_title', gcd_issue.series_id AS 'series_id' "
-                        "FROM gcd_issue "
-                        "WHERE gcd_issue.series_id=?",
-                        [int(series_id)],
-                    )
-
-                    rows = cur.fetchall()
-
-                    # now process the results
-                    for record in rows:
-                        results.append(self._format_gcd_issue(record))
+                    return [GenericMetadata()]
 
         except sqlite3.DataError as e:
             logger.debug(f"DB data error: {e}")
@@ -396,10 +383,10 @@ class GCDTalkerExt(ComicTalker):
                         "GROUP_CONCAT(CASE WHEN gcd_story.title IS NOT NULL AND gcd_story.title != '' THEN "
                         "gcd_story.title END, '\n') AS 'story_titles' "
                         "FROM gcd_issue "
-                        "LEFT JOIN gcd_story ON gcd_story.issue_id=gcd_issue.id "
-                        "WHERE gcd_issue.series_id=? AND gcd_story.type_id=19 "
+                        "LEFT JOIN gcd_story ON gcd_story.issue_id=gcd_issue.id AND gcd_story.type_id=19 "
+                        "WHERE gcd_issue.series_id=? "
                         "AND gcd_issue.number=? AND gcd_issue.key_date LIKE ? "
-                        "GROUP BY gcd_issue.id",
+                        "GROUP BY gcd_issue.number;",
                         [vid, issue_number, year_search],
                     )
 
@@ -415,31 +402,7 @@ class GCDTalkerExt(ComicTalker):
                                 image, variants = self._find_issue_images(issue["id"])
                                 issue["image"] = image
                                 issue["alt_image_urls"] = variants
-
-                            results.append(self._map_comic_issue_to_metadata(issue, series))
-
-                    # It's possible an issue doesn't have "stories" so the above will be empty
-                    else:
-                        # Select only issue data without "stories"
-                        cur.execute(
-                            "SELECT gcd_issue.id AS 'id', gcd_issue.key_date AS 'key_date', "
-                            "gcd_issue.number AS 'number', gcd_issue.title AS 'issue_title', "
-                            "gcd_issue.series_id AS 'series_id' "
-                            "FROM gcd_issue "
-                            "WHERE gcd_issue.series_id=? AND gcd_issue.number=? AND gcd_issue.key_date LIKE ? ",
-                            [vid, issue_number, str(year) + "%"],
-                        )
-                        rows = cur.fetchall()
-
-                        # now process the results
-                        for record in rows:
-                            issue = self._format_gcd_issue(record)
-
-                            # Download covers for matching
-                            if self.download_tag_covers:
-                                image, variants = self._find_issue_images(issue["id"])
-                                issue["image"] = image
-                                issue["alt_image_urls"] = variants
+                                issue["covers_downloaded"] = True
 
                             results.append(self._map_comic_issue_to_metadata(issue, series))
 
@@ -484,7 +447,7 @@ class GCDTalkerExt(ComicTalker):
         """Fetch images for the issue id"""
         cover = ""
         variants = []
-        # start_time = time.perf_counter()
+
         try:
             covers_html = requests.get(f"{self.website}/issue/{issue_id}/cover/4").text
         except requests.exceptions.Timeout:
@@ -494,10 +457,6 @@ class GCDTalkerExt(ComicTalker):
             logger.debug(f"Request exception: {e}")
             raise TalkerNetworkError(self.website, 0, str(e)) from e
 
-        # end_time = time.perf_counter()
-        # print(f"html:  {end_time - start_time}")
-
-        # start_time = time.perf_counter()
         covers_page = BeautifulSoup(covers_html, "html.parser")
 
         img_list = covers_page.findAll("img", "cover_img")
@@ -509,13 +468,12 @@ class GCDTalkerExt(ComicTalker):
                 cover = src
             else:
                 variants.append(src)
-        # end_time = time.perf_counter()
-        # print(f"parse:  {end_time - start_time}")
+
         return cover, variants
 
     def _find_issue_credits(self, issue_id: int, story_id_list: list[str]) -> list[GCDCredit]:
         credit_results = []
-        # First get the issue credits
+        # First get the issue table credits
         try:
             with sqlite3.connect(self.db_file) as con:
                 con.row_factory = sqlite3.Row
@@ -530,7 +488,6 @@ class GCDTalkerExt(ComicTalker):
                 )
                 rows = cur.fetchall()
 
-                # now process the results
                 for record in rows:
                     result = GCDCredit(
                         name=record[1],
@@ -539,7 +496,7 @@ class GCDTalkerExt(ComicTalker):
 
                     credit_results.append(result)
 
-                # Get story credits
+                # Get story table credits
                 for story_id in story_id_list:
                     cur.execute(
                         "SELECT gcd_creator_name_detail.name, gcd_credit_type.name "
@@ -572,8 +529,6 @@ class GCDTalkerExt(ComicTalker):
     def _format_search_results(self, search_results: list[GCDSeries]) -> list[ComicSeries]:
         formatted_results = []
         for record in search_results:
-            # Option to use sort name?
-
             formatted_results.append(
                 ComicSeries(
                     aliases=set(),
@@ -595,35 +550,7 @@ class GCDTalkerExt(ComicTalker):
         # Convert for attribute access
         row_dict = dict(row)
 
-        if complete:
-            return GCDIssue(
-                id=row_dict["id"],
-                key_date=row_dict["key_date"],
-                number=row_dict["number"],
-                issue_title=row_dict["issue_title"],
-                series_id=row_dict["series_id"],
-                issue_notes=row_dict["issue_notes"],
-                volume=row_dict["volume"],
-                maturity_rating=row_dict["maturity_rating"],
-                characters=row_dict["characters"].split("; ") if "characters" in row_dict else "",
-                country=row_dict["country"],
-                country_iso=row_dict["country_iso"],
-                story_ids=row_dict["story_ids"].split("\n")
-                if "story_ids" in row_dict and row_dict["story_ids"]
-                else [],
-                language=row_dict["language"],
-                language_iso=row_dict["language_iso"],
-                story_titles=row_dict["story_titles"].split("\n")
-                if "story_titles" in row_dict and row_dict["story_titles"]
-                else [],
-                genres=row_dict["genres"].split("\n") if "genres" in row_dict and row_dict["genres"] else [],
-                synopses=row_dict["synopses"].split("\n\n") if "synopses" in row_dict and row_dict["synopses"] else [],
-                alt_image_urls=[],
-                credits=[],
-                image="",
-            )
-
-        return GCDIssue(
+        gcd_issue = GCDIssue(
             id=row_dict["id"],
             key_date=row_dict["key_date"],
             number=row_dict["number"],
@@ -632,12 +559,30 @@ class GCDTalkerExt(ComicTalker):
             story_titles=row_dict["story_titles"].split("\n")
             if "story_titles" in row_dict and row_dict["story_titles"] is not None
             else [],
-            synopses=row_dict["synopses"].split("\n")
+            synopses=row_dict["synopses"].split("\n\n")
             if "synopses" in row_dict and row_dict["synopses"] is not None
             else [],
             image="",
             alt_image_urls=[],
+            covers_downloaded=False,
         )
+
+        if complete:
+            gcd_issue["issue_notes"] = row_dict["issue_notes"]
+            gcd_issue["volume"] = row_dict["volume"]
+            gcd_issue["price"] = row_dict["price"]
+            gcd_issue["isbn"] = row_dict["isbn"]
+            gcd_issue["maturity_rating"] = row_dict["maturity_rating"]
+            gcd_issue["characters"] = row_dict["characters"].split("; ") if "characters" in row_dict and row_dict["characters"] else []
+            gcd_issue["country"] = row_dict["country"]
+            gcd_issue["country_iso"] = row_dict["country_iso"]
+            gcd_issue["story_ids"] = row_dict["story_ids"].split("\n") if "story_ids" in row_dict and row_dict["story_ids"] else []
+            gcd_issue["language"] = row_dict["language"]
+            gcd_issue["language_iso"] = row_dict["language_iso"]
+            gcd_issue["genres"] = [genre.strip().capitalize() for genre in row_dict.get("genres", "").split(";")] if "genres" in row_dict and row_dict["genres"] else []
+            gcd_issue["credits"] = []
+
+        return gcd_issue
 
     def fetch_series(self, series_id: str) -> ComicSeries:
         return self._format_search_results([self._fetch_series_data(int(series_id))])[0]
@@ -765,18 +710,18 @@ class GCDTalkerExt(ComicTalker):
                     "GROUP_CONCAT(CASE WHEN gcd_story.title IS NOT NULL AND gcd_story.title != '' THEN "
                     "gcd_story.title END, '\n') AS 'story_titles',"
                     "GROUP_CONCAT(CASE WHEN gcd_story.genre IS NOT NULL AND gcd_story.genre != '' THEN "
-                    "gcd_story.genre END, '\n') AS 'genres',"
+                    "gcd_story.genre END, ';') AS 'genres',"
                     "GROUP_CONCAT(CASE WHEN gcd_story.synopsis IS NOT NULL AND gcd_story.synopsis != '' THEN "
                     "gcd_story.synopsis END,'\n\n') AS 'synopses', "
                     "GROUP_CONCAT(CASE WHEN gcd_story.id IS NOT NULL AND gcd_story.id != '' THEN "
                     "gcd_story.id END, '\n') AS 'story_ids' "
                     "FROM gcd_issue "
-                    "LEFT JOIN gcd_story ON gcd_story.issue_id=gcd_issue.id "
+                    "LEFT JOIN gcd_story ON gcd_story.issue_id=gcd_issue.id AND gcd_story.type_id=19 "
                     "LEFT JOIN gcd_indicia_publisher ON gcd_issue.indicia_publisher_id=gcd_indicia_publisher.id "
                     "LEFT JOIN gcd_series ON gcd_issue.series_id=gcd_series.id "
                     "LEFT JOIN stddata_country ON gcd_indicia_publisher.country_id=stddata_country.id "
                     "LEFT JOIN stddata_language ON gcd_series.language_id=stddata_language.id "
-                    "WHERE gcd_issue.id=? AND gcd_story.type_id=19 "
+                    "WHERE gcd_issue.id=? "
                     "GROUP BY gcd_issue.id",
                     [issue_id],
                 )
@@ -786,28 +731,8 @@ class GCDTalkerExt(ComicTalker):
                     issue_result = self._format_gcd_issue(row, True)
                     # It's possible an issue doesn't have "stories" so the above will be empty
                 else:
-                    # Select only issue data without "stories"
-                    cur.execute(
-                        "SELECT gcd_issue.id AS 'id', gcd_issue.key_date AS 'key_date', gcd_issue.number AS 'number', "
-                        "gcd_issue.title AS 'issue_title', gcd_issue.series_id AS 'series_id', "
-                        "gcd_issue.notes AS 'issue_notes', gcd_issue.volume AS 'volume', "
-                        "gcd_issue.rating AS 'maturity_rating', "
-                        "stddata_country.name AS 'country', stddata_country.code AS 'country_iso', "
-                        "stddata_language.name AS 'language', stddata_language.code AS 'language_iso' "
-                        "FROM gcd_issue "
-                        "LEFT JOIN gcd_indicia_publisher ON gcd_issue.indicia_publisher_id=gcd_indicia_publisher.id "
-                        "LEFT JOIN gcd_series ON gcd_issue.series_id=gcd_series.id "
-                        "LEFT JOIN stddata_country ON gcd_indicia_publisher.country_id=stddata_country.id "
-                        "LEFT JOIN stddata_language ON gcd_series.language_id=stddata_language.id "
-                        "WHERE gcd_issue.id=?",
-                        [issue_id],
-                    )
-
-                    row = cur.fetchone()
-
-                    # Still may not have an issue?
-                    if row:
-                        issue_result = self._format_gcd_issue(row, True)
+                    logger.debug(f"Issue ID {issue_id} not found")
+                    raise TalkerDataError(self.name, 3, f"Issue ID {issue_id} not found")
 
         except sqlite3.DataError as e:
             logger.debug(f"DB data error: {e}")
