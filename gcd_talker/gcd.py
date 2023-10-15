@@ -781,7 +781,7 @@ class GCDTalker(ComicTalker):
         issue_result["credits"] = self._find_issue_credits(issue_id, issue_result["story_ids"])
 
         # Add covers
-        if self.download_gui_covers or self.download_tag_covers:
+        if self.download_gui_covers:
             image, variants = self._find_issue_images(issue_result["id"])
             issue_result["image"] = image
             issue_result["alt_image_urls"] = variants
