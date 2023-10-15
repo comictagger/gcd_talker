@@ -21,6 +21,7 @@ import json
 import logging
 import pathlib
 import sqlite3
+import re
 from typing import Any, Callable
 from urllib.parse import urljoin
 
@@ -384,6 +385,24 @@ class GCDTalkerExt(ComicTalker):
 
         return results
 
+    def _match_format(self, string: str) -> str | None:
+        # The publishing_format field is a free-text mess, try and make something useful
+        word_list = [
+            "annual", "album", "anthology", "collection", "collect", "graphic novel",
+            "hardcover", "limited series", "one[-\s]?shot", "preview", "special",
+            "trade paper[\s]?back", "web[\s]?comic", "mini[-\s]?series"
+        ]
+
+        pattern = r'\b(?:' + '|'.join(word_list) + r')\b'
+        match = re.search(pattern, string, re.IGNORECASE)
+
+        if match:
+            if "collect" in match.group(0):
+                return "Collection"
+            return match.group(0).title()
+        else:
+            return None
+
     def _find_series_image(self, series_id: int) -> str:
         """Find the id of the first issue and get the image url"""
         issue_id = None
@@ -678,7 +697,6 @@ class GCDTalkerExt(ComicTalker):
                 con.text_factory = str
                 cur = con.cursor()
 
-                # TODO break format out to make something sensible from it?
                 cur.execute(
                     "SELECT gcd_issue.id AS 'id', gcd_issue.key_date AS 'key_date', gcd_issue.number AS 'number', "
                     "gcd_issue.title AS 'issue_title', gcd_issue.series_id AS 'series_id', "
@@ -817,8 +835,7 @@ class GCDTalkerExt(ComicTalker):
         md.language = issue.get("language_iso")
         md.country = issue.get("country")
 
-        # The publishing_format field is a free-text mess
-        md.format = series.get("format")
+        md.format = self._match_format(series.get("format"))
 
         md.maturity_rating = issue.get("maturity_rating")
 
