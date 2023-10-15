@@ -50,7 +50,7 @@ class GCDSeries(TypedDict, total=False):
     year_began: int | None
     year_ended: int | None
     image: str | None
-    cover_downloaded: bool  # Store for option switching. If option was False = False etc. Means can mark as complete
+    cover_downloaded: bool
 
 
 class GCDIssue(TypedDict, total=False):
@@ -76,7 +76,7 @@ class GCDIssue(TypedDict, total=False):
     credits: list[
         GCDCredit
     ]  # gcd_issue_credit and gcd_story_credit (using story_id) and gcd_credit_type and gcd_creator
-    covers_downloaded: bool  # Store for option switching. If option was False = False etc. Means can mark as complete
+    covers_downloaded: bool
 
 
 class GCDCredit(TypedDict):
@@ -241,6 +241,7 @@ class GCDTalkerExt(ComicTalker):
                         publisher_name=record["publisher_name"],
                         format="",
                         image="",
+                        cover_downloaded=False,
                     )
 
                     results.append(result)
@@ -592,8 +593,13 @@ class GCDTalkerExt(ComicTalker):
         cached_series = cvc.get_series_info(str(series_id), self.id)
 
         if cached_series is not None and cached_series[1]:
-            # TODO Check cover_downloaded
-            return json.loads(cached_series[0].data)
+            cache = json.loads(cached_series[0].data)
+            # Even though the cache is "complete", downloading the cover is an option
+            if self.download_gui_covers and cache["cover_downloaded"]:
+                return cache
+            elif not self.download_gui_covers:
+                return cache
+            # While an else could go here to fetch the cover, might as well refresh all the data
 
         try:
             with sqlite3.connect(self.db_file) as con:
@@ -615,6 +621,7 @@ class GCDTalkerExt(ComicTalker):
                 )
                 row = cur.fetchone()
 
+                # Scrape GCD for series cover URL
                 image = ""
                 cover_download = False
                 if self.download_gui_covers:
@@ -684,11 +691,16 @@ class GCDTalkerExt(ComicTalker):
 
     def _fetch_issue_by_issue_id(self, issue_id: int) -> GCDIssue:
         cvc = ComicCacher(self.cache_folder, self.version)
-        cached_issue = cvc.get_issue_info(issue_id, self.id)
+        cached_issue = cvc.get_issue_info(str(issue_id), self.id)
 
         if cached_issue and cached_issue[1]:
-            # TODO covers_downloaded
-            return json.loads(cached_issue[0].data)
+            cache = json.loads(cached_issue[0].data)
+            # Even though the cache is "complete", downloading the cover is an option
+            if self.download_gui_covers and cache["covers_downloaded"]:
+                return cache
+            elif not self.download_gui_covers:
+                return cache
+            # While an else could go here to fetch the cover, might as well refresh all the data
 
         # Need this one?
         self.check_create_index()
@@ -744,11 +756,14 @@ class GCDTalkerExt(ComicTalker):
         # Add credits
         issue_result["credits"] = self._find_issue_credits(issue_id, issue_result["story_ids"])
 
-        # Add variant covers
+        # Add covers
         if self.download_gui_covers or self.download_tag_covers:
             image, variants = self._find_issue_images(issue_result["id"])
             issue_result["image"] = image
             issue_result["alt_image_urls"] = variants
+            issue_result["covers_downloaded"] = True
+        else:
+            issue_result["covers_downloaded"] = False
 
         # How to handle covers downloaded or not? There could be no cover so "" doesn't mean it wasn't tried. Add flag?
         cvc.add_issues_info(
