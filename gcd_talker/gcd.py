@@ -183,19 +183,23 @@ class GCDTalker(ComicTalker):
         return settings
 
     def check_status(self, settings: dict[str, Any]) -> tuple[str, bool]:
-        try:
-            with sqlite3.connect(settings["gcd_url"]) as con:
-                con.row_factory = sqlite3.Row
-                con.text_factory = str
-                cur = con.cursor()
-                cur.execute("SELECT * FROM gcd_credit_type")
+        # Check file exists
+        if pathlib.Path(settings["gcd_url"]).is_file():
+            try:
+                with sqlite3.connect(settings["gcd_url"]) as con:
+                    con.row_factory = sqlite3.Row
+                    con.text_factory = str
+                    cur = con.cursor()
+                    cur.execute("SELECT * FROM gcd_credit_type")
 
-                cur.fetchone()
+                    cur.fetchone()
 
-            return "The DB access test was successful", True
+                return "The DB access test was successful", True
 
-        except sqlite3.Error:
-            return "DB access failed", False
+            except sqlite3.Error:
+                return "DB access failed", False
+        else:
+            return "DB path does not exist", False
 
     def check_create_index(self) -> None:
         self.check_db_filename_not_empty()
@@ -227,6 +231,8 @@ class GCDTalker(ComicTalker):
     def check_db_filename_not_empty(self):
         if not self.db_file:
             raise TalkerDataError(self.name, 3, "Database path is empty, specify a path and filename!")
+        if not pathlib.Path(self.db_file).is_file():
+            raise TalkerDataError(self.name, 3, "Database path or filename is invalid!")
 
     def search_for_series(
         self,
