@@ -102,7 +102,7 @@ class GCDTalker(ComicTalker):
     def __init__(self, version: str, cache_folder: pathlib.Path):
         super().__init__(version, cache_folder)
         # Default settings
-        self.db_file: str = ""
+        self.db_file: pathlib.Path = pathlib.Path.home()
         self.use_series_start_as_volume: bool = False
         self.prefer_story_titles: bool = False
         self.combine_notes: bool = False
@@ -162,10 +162,20 @@ class GCDTalker(ComicTalker):
             display_name="Preferred currency",
             help="Preferred currency for price: USD, EUR, GBP, etc. (default: USD)",
         )
-        parser.add_setting(f"--{self.id}-key", file=False, cmdline=False)
         parser.add_setting(
             f"--{self.id}-url",
-            display_name="SQLite DB location URI",
+            file=True,
+            cmdline=False,
+            default="Leave empty, for testing DB only",
+            display_name="DB Test",
+            help="For DB testing only",
+        )
+        parser.add_setting(f"--{self.id}-key", file=False, cmdline=False)
+        parser.add_setting(
+            "--gcd-filepath",
+            display_name="SQLite GCD DB",
+            type=pathlib.Path,
+            default=pathlib.Path.home(),
             help="The path and filename of the GCD SQLite file",
         )
 
@@ -179,14 +189,14 @@ class GCDTalker(ComicTalker):
         self.currency = settings["gcd_currency"]
         self.download_gui_covers = settings["gcd_gui_covers"]
         self.download_tag_covers = settings["gcd_tag_covers"]
-        self.db_file = settings["gcd_url"]
+        self.db_file = settings["gcd_filepath"]
         return settings
 
     def check_status(self, settings: dict[str, Any]) -> tuple[str, bool]:
         # Check file exists
-        if pathlib.Path(settings["gcd_url"]).is_file():
+        if pathlib.Path(settings["gcd_filepath"]).is_file():
             try:
-                with sqlite3.connect(settings["gcd_url"]) as con:
+                with sqlite3.connect(settings["gcd_filepath"]) as con:
                     con.row_factory = sqlite3.Row
                     con.text_factory = str
                     cur = con.cursor()
