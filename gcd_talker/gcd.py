@@ -252,7 +252,7 @@ class GCDTalker(ComicTalker):
         literal: bool = False,
         series_match_thresh: int = 90,
     ) -> list[ComicSeries]:
-        search_series_name = utils.sanitize_title(series_name, literal)
+        search_series_name = series_name
         if not literal:
             # Make the search fuzzier
             search_series_name = search_series_name.replace(" ", "%") + "%"
