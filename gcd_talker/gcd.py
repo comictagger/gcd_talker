@@ -496,13 +496,17 @@ class GCDTalker(ComicTalker):
 
         img_list = covers_page.findAll("img", "cover_img")
 
-        for i, image in enumerate(img_list):
-            # Strip arbitrary number from end for cache
-            src = image.get("src").split("?")[0]
-            if i == 0:
-                cover = src
-            else:
-                variants.append(src)
+        if len(img_list) > 0:
+            for i, image in enumerate(img_list):
+                # Strip arbitrary number from end for cache
+                src = image.get("src").split("?")[0]
+                if i == 0:
+                    cover = src
+                else:
+                    variants.append(src)
+        else:
+            # TODO check for cloudflare activation and log
+            logger.debug(f"No image found for ID: {issue_id}")
 
         return cover, variants
 
@@ -829,8 +833,8 @@ class GCDTalker(ComicTalker):
             series=utils.xlate(series["name"]),
         )
 
-        md.cover_image = issue.get("image")
-        md.alternate_images = issue.get("alt_image_urls")
+        md._cover_image = issue.get("image")
+        md._alternate_images = issue.get("alt_image_urls")
 
         if issue.get("characters"):
             # Logan [disambiguation: Wolverine] - (name) James Howlett
