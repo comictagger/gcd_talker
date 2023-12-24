@@ -112,6 +112,8 @@ class GCDTalker(ComicTalker):
         self.download_tag_covers: bool = False
 
         self.has_issue_id_type_id_index: bool = False
+        self.has_fts5: bool = False
+        self.has_fts5_checked: bool = False
 
     def register_settings(self, parser: settngs.Manager) -> None:
         parser.add_setting(
@@ -244,6 +246,48 @@ class GCDTalker(ComicTalker):
         if not pathlib.Path(self.db_file).is_file():
             raise TalkerDataError(self.name, 3, "Database path or filename is invalid!")
 
+    def check_db_fts5(self):
+        try:
+            with sqlite3.connect(self.db_file) as con:
+                con = sqlite3.connect(":memory:")
+                cur = con.cursor()
+                cur.execute("pragma compile_options;")
+
+                if ("ENABLE_FTS5",) not in cur.fetchall():
+                    logger.debug("SQLite has no FTS5 support!")
+                    self.has_fts5_checked = True
+                    return
+
+        except sqlite3.Error as e:
+            logger.debug(f"DB error: {e}")
+            raise TalkerDataError(self.name, 0, str(e))
+
+        try:
+            with sqlite3.connect(self.db_file) as con:
+                con.row_factory = sqlite3.Row
+                con.text_factory = str
+                cur = con.cursor()
+                cur.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'fts';")
+
+                if cur.fetchone():
+                    self.has_fts5 = True
+                    self.has_fts5_checked = True
+                    return
+                else:
+                    # Create the FTS5 table
+                    cur.execute(
+                        "CREATE VIRTUAL TABLE fts USING fts5(name, content='gcd_series', content_rowid='id', "
+                        "tokenize = 'porter unicode61 remove_diacritics 1');"
+                    )
+                    cur.execute("INSERT INTO fts(fts) VALUES('rebuild');")
+
+        except sqlite3.DataError as e:
+            logger.debug(f"DB data error: {e}")
+            raise TalkerDataError(self.name, 1, str(e))
+        except sqlite3.Error as e:
+            logger.debug(f"DB error: {e}")
+            raise TalkerDataError(self.name, 0, str(e))
+
     def search_for_series(
         self,
         series_name: str,
@@ -252,16 +296,52 @@ class GCDTalker(ComicTalker):
         literal: bool = False,
         series_match_thresh: int = 90,
     ) -> list[ComicSeries]:
+        sql_search: str = ""
+        sql_search_fields: str = """SELECT gcd_series.id AS 'id', gcd_series.name AS 'series_name',
+                            gcd_series.sort_name AS 'sort_name', gcd_series.notes AS 'notes',
+                            gcd_series.year_began AS 'year_began', gcd_series.year_ended AS 'year_ended',
+                            gcd_series.issue_count AS 'issue_count', gcd_publisher.name AS 'publisher_name' """
+
+        sql_literal_search: str = """FROM gcd_publisher
+                    LEFT JOIN gcd_series ON gcd_series.publisher_id=gcd_publisher.id
+                    WHERE gcd_series.name = ?"""
+
+        sql_like_search: str = """FROM gcd_publisher
+                    LEFT JOIN gcd_series ON gcd_series.publisher_id=gcd_publisher.id
+                    WHERE gcd_series.name LIKE ?"""
+
+        sql_ft_search: str = """FROM fts
+                    LEFT JOIN gcd_series on fts.rowid=gcd_series.id
+                    LEFT JOIN gcd_publisher ON gcd_series.publisher_id=gcd_publisher.id
+                    WHERE fts MATCH ?;"""
+
+        self.check_db_filename_not_empty()
+        if not self.has_fts5_checked:
+            self.check_db_fts5()
+
         search_series_name = series_name
-        if not literal:
+        if literal:
+            # This will be literally literal: "the" will not match "The" etc.
+            sql_search = sql_search_fields + sql_literal_search
+        elif not self.has_fts5:
             # Make the search fuzzier
             search_series_name = search_series_name.replace(" ", "%") + "%"
+            sql_search = sql_search_fields + sql_like_search
+        else:
+            # Order is important
+            # Escape any single and double quotes
+            search_series_name = search_series_name.replace("'", "''")
+            search_series_name = search_series_name.replace('"', '""')
+            # Now format for full-text search by tokenizing each word with surrounding double quotes
+            search_series_name = '"' + search_series_name + '"'
+            search_series_name = search_series_name.replace(" ", '" "')
+
+            # Use FTS5 for search
+            sql_search = sql_search_fields + sql_ft_search
 
         results = []
 
         logger.info(f"{self.name} searching: {search_series_name}")
-
-        self.check_db_filename_not_empty()
 
         try:
             with sqlite3.connect(self.db_file) as con:
@@ -269,13 +349,7 @@ class GCDTalker(ComicTalker):
                 con.text_factory = str
                 cur = con.cursor()
                 cur.execute(
-                    "SELECT gcd_series.id AS 'id', gcd_series.name AS 'series_name', "
-                    "gcd_series.sort_name AS 'sort_name', gcd_series.notes AS 'notes', "
-                    "gcd_series.year_began AS 'year_began', gcd_series.year_ended AS 'year_ended', "
-                    "gcd_series.issue_count AS 'issue_count', gcd_publisher.name AS 'publisher_name' "
-                    "FROM gcd_publisher "
-                    "LEFT JOIN gcd_series ON gcd_series.publisher_id=gcd_publisher.id "
-                    "WHERE gcd_series.name LIKE ?",
+                    sql_search,
                     [search_series_name],
                 )
                 rows = cur.fetchall()
