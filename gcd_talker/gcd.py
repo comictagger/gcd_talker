@@ -35,6 +35,7 @@ from comictalker.comiccacher import ComicCacher
 from comictalker.comiccacher import Issue as CCIssue
 from comictalker.comiccacher import Series as CCSeries
 from comictalker.comictalker import ComicTalker, TalkerDataError, TalkerNetworkError
+from pyrate_limiter import Limiter, RequestRate
 from typing_extensions import TypedDict
 
 logger = logging.getLogger(f"comictalker.{__name__}")
@@ -80,6 +81,9 @@ class GCDIssue(TypedDict, total=False):
         GCDCredit
     ]  # gcd_issue_credit and gcd_story_credit (using story_id) and gcd_credit_type and gcd_creator
     covers_downloaded: bool
+
+
+limiter = Limiter(RequestRate(10, 10))
 
 
 class GCDCredit(TypedDict):
@@ -557,14 +561,15 @@ class GCDTalker(ComicTalker):
         cover = ""
         variants = []
 
-        try:
-            covers_html = requests.get(f"{self.website}/issue/{issue_id}/cover/4").text
-        except requests.exceptions.Timeout:
-            logger.debug(f"Connection to {self.website} timed out.")
-            raise TalkerNetworkError(self.website, 4)
-        except requests.exceptions.RequestException as e:
-            logger.debug(f"Request exception: {e}")
-            raise TalkerNetworkError(self.website, 0, str(e)) from e
+        with limiter.ratelimit("default", delay=True):
+            try:
+                covers_html = requests.get(f"{self.website}/issue/{issue_id}/cover/4").text
+            except requests.exceptions.Timeout:
+                logger.debug(f"Connection to {self.website} timed out.")
+                raise TalkerNetworkError(self.website, 4)
+            except requests.exceptions.RequestException as e:
+                logger.debug(f"Request exception: {e}")
+                raise TalkerNetworkError(self.website, 0, str(e)) from e
 
         covers_page = BeautifulSoup(covers_html, "html.parser")
 
