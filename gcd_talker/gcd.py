@@ -470,7 +470,7 @@ class GCDTalker(ComicTalker):
                         "FROM gcd_issue "
                         "LEFT JOIN gcd_story ON gcd_story.issue_id=gcd_issue.id AND gcd_story.type_id=19 "
                         "WHERE gcd_issue.series_id=? "
-                        "AND gcd_issue.number=? AND gcd_issue.key_date LIKE ? "
+                        "AND gcd_issue.number=? AND (gcd_issue.key_date = ? OR gcd_issue.key_date = '') "
                         "GROUP BY gcd_issue.number;",
                         [vid, issue_number, year_search],
                     )
