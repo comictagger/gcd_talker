@@ -37,6 +37,8 @@ from comictalker.comiccacher import Series as CCSeries
 from comictalker.comictalker import ComicTalker, TalkerDataError, TalkerNetworkError
 from pyrate_limiter import Limiter, RequestRate
 from typing_extensions import TypedDict
+from urllib3.exceptions import LocationParseError
+from urllib3.util import parse_url
 
 logger = logging.getLogger(f"comictalker.{__name__}")
 
@@ -94,6 +96,7 @@ class GCDCredit(TypedDict):
 class GCDTalker(ComicTalker):
     name: str = "Grand Comics Database"
     id: str = "gcd"
+    comictagger_min_ver: str = "1.6.0a13"
     website: str = "https://www.comics.org/"
     logo_url: str = "https://files1.comics.org/static/img/gcd_logo.aaf0e64616e2.png"
     attribution: str = f"Data from <a href='{website}'>{name}</a> (<a href='http://creativecommons.org/licenses/by/3.0/'>CCA license</a>)"
@@ -244,13 +247,13 @@ class GCDTalker(ComicTalker):
                 logger.debug(f"DB error: {e}")
                 raise TalkerDataError(self.name, 0, str(e))
 
-    def check_db_filename_not_empty(self):
+    def check_db_filename_not_empty(self) -> None:
         if not self.db_file:
             raise TalkerDataError(self.name, 3, "Database path is empty, specify a path and filename!")
         if not pathlib.Path(self.db_file).is_file():
             raise TalkerDataError(self.name, 3, "Database path or filename is invalid!")
 
-    def check_db_fts5(self):
+    def check_db_fts5(self) -> None:
         try:
             with sqlite3.connect(self.db_file) as con:
                 con = sqlite3.connect(":memory:")
@@ -957,7 +960,12 @@ class GCDTalker(ComicTalker):
         else:
             md.description += "\r\n\r\n".join(issue["synopses"])
 
-        md.web_link = urljoin(self.website, f"issue/{issue['id']}")
+        url = urljoin(self.website, f"issue/{issue['id']}")
+        if url:
+            try:
+                md.web_links = [parse_url(url)]
+            except LocationParseError:
+                ...
 
         md.volume = utils.xlate_int(issue.get("volume"))
         if self.use_series_start_as_volume:
