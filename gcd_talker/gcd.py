@@ -1,6 +1,7 @@
 """
 Grand Comics Database™ (https://www.comics.org) information source
 """
+
 # Copyright comictagger team
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -96,7 +97,9 @@ class GCDTalker(ComicTalker):
     id: str = "gcd"
     website: str = "https://www.comics.org/"
     logo_url: str = "https://files1.comics.org/static/img/gcd_logo.aaf0e64616e2.png"
-    attribution: str = f"Data from <a href='{website}'>{name}</a> (<a href='http://creativecommons.org/licenses/by/3.0/'>CCA license</a>)"
+    attribution: str = (
+        f"Data from <a href='{website}'>{name}</a> (<a href='http://creativecommons.org/licenses/by/3.0/'>CCA license</a>)"
+    )
     about: str = (
         f"<a href='{website}'>{name}™</a> is an ongoing international project to build a detailed "
         f"comic-book database that will be easy to use and understand, and also easy for contributors to "
@@ -674,12 +677,16 @@ class GCDTalker(ComicTalker):
             number=row_dict["number"],
             issue_title=row_dict["issue_title"],
             series_id=row_dict["series_id"],
-            story_titles=row_dict["story_titles"].split("\n")
-            if "story_titles" in row_dict and row_dict["story_titles"] is not None
-            else [],
-            synopses=row_dict["synopses"].split("\n\n")
-            if "synopses" in row_dict and row_dict["synopses"] is not None
-            else [],
+            story_titles=(
+                row_dict["story_titles"].split("\n")
+                if "story_titles" in row_dict and row_dict["story_titles"] is not None
+                else []
+            ),
+            synopses=(
+                row_dict["synopses"].split("\n\n")
+                if "synopses" in row_dict and row_dict["synopses"] is not None
+                else []
+            ),
             image="",
             alt_image_urls=[],
             covers_downloaded=False,
