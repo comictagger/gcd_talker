@@ -23,7 +23,7 @@ import logging
 import pathlib
 import re
 import sqlite3
-from typing import Any, Callable
+from typing import Any, Callable, TypedDict
 from urllib.parse import urljoin
 
 import requests
@@ -37,7 +37,6 @@ from comictalker.comiccacher import Issue as CCIssue
 from comictalker.comiccacher import Series as CCSeries
 from comictalker.comictalker import ComicTalker, TalkerDataError, TalkerNetworkError
 from pyrate_limiter import Limiter, RequestRate
-from typing_extensions import TypedDict
 from urllib3.exceptions import LocationParseError
 from urllib3.util import parse_url
 
@@ -126,6 +125,7 @@ class GCDTalker(ComicTalker):
         self.has_fts5_checked: bool = False
 
         self.nn_is_issue_one: bool = True
+        self.replace_nn_with_one: bool = False
 
     def register_settings(self, parser: settngs.Manager) -> None:
         parser.add_setting(
@@ -148,6 +148,13 @@ class GCDTalker(ComicTalker):
             action=argparse.BooleanOptionalAction,
             display_name="Auto-tag: Issue number of 'nn' are considered as 1 (TPB etc.)",
             help="Single issues such as TPB are given the issue number 'nn', consider those as issue 1 when using auto-tag",
+        )
+        parser.add_setting(
+            "--gcd-replace-nn-with-one",
+            default=False,
+            action=argparse.BooleanOptionalAction,
+            display_name="Replace issue number '[nn]' with '1' (only on final issue tagging)",
+            help="Replaces the issue number '[nn]' with a '1'. (Will not show in issue window etc.)",
         )
         parser.add_setting(
             "--gcd-prefer-story-titles",
@@ -205,6 +212,7 @@ class GCDTalker(ComicTalker):
 
         self.use_series_start_as_volume = settings["gcd_use_series_start_as_volume"]
         self.nn_is_issue_one = settings["gcd_nn_is_issue_one"]
+        self.replace_nn_with_one = settings["gcd_replace_nn_with_one"]
         self.prefer_story_titles = settings["gcd_prefer_story_titles"]
         self.combine_notes = settings["gcd_combine_notes"]
         self.use_ongoing_issue_count = settings["gcd_use_ongoing"]
@@ -471,8 +479,8 @@ class GCDTalker(ComicTalker):
 
         sql_search: str = ""
 
-        sql_search_main: str = """SELECT gcd_issue.id AS 'id', gcd_issue.key_date AS 'key_date', gcd_issue.number AS 'number',
-                        gcd_issue.title AS 'issue_title', gcd_issue.series_id AS 'series_id',
+        sql_search_main: str = """SELECT gcd_issue.id AS 'id', gcd_issue.key_date AS 'key_date', gcd_issue.number AS
+                        'number', gcd_issue.title AS 'issue_title', gcd_issue.series_id AS 'series_id',
                         GROUP_CONCAT(CASE WHEN gcd_story.title IS NOT NULL AND gcd_story.title != '' THEN
                         gcd_story.title END, '\n') AS 'story_titles'
                         FROM gcd_issue
@@ -952,9 +960,13 @@ class GCDTalker(ComicTalker):
             issue_id=utils.xlate(issue["id"]),
             series_id=utils.xlate(series["id"]),
             publisher=utils.xlate(series.get("publisher_name")),
-            issue=utils.xlate(IssueString(issue.get("number")).as_string()),
             series=utils.xlate(series["name"]),
         )
+        issue_number = utils.xlate(IssueString(issue.get("number")).as_string())
+        if self.replace_nn_with_one and issue_number == "[nn]":
+            md.issue = "1"
+        else:
+            md.issue = issue_number
 
         md._cover_image = issue.get("image")
         md._alternate_images = issue.get("alt_image_urls")
