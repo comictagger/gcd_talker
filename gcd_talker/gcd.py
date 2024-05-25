@@ -100,7 +100,8 @@ class GCDTalker(ComicTalker):
     website: str = "https://www.comics.org/"
     logo_url: str = "https://files1.comics.org/static/img/gcd_logo.aaf0e64616e2.png"
     attribution: str = (
-        f"Data from <a href='{website}'>{name}</a> (<a href='http://creativecommons.org/licenses/by/3.0/'>CCA license</a>)"
+        f"Data from <a href='{website}'>{name}</a> (<a href='http://creativecommons.org/licenses/by/3.0/'>"
+        f"CCA license</a>)"
     )
     about: str = (
         f"<a href='{website}'>{name}™</a> is an ongoing international project to build a detailed "
