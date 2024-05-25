@@ -23,7 +23,7 @@ import logging
 import pathlib
 import re
 import sqlite3
-from typing import Any, Callable
+from typing import Any, Callable, TypedDict
 from urllib.parse import urljoin
 
 import requests
@@ -37,7 +37,6 @@ from comictalker.comiccacher import Issue as CCIssue
 from comictalker.comiccacher import Series as CCSeries
 from comictalker.comictalker import ComicTalker, TalkerDataError, TalkerNetworkError
 from pyrate_limiter import Limiter, RequestRate
-from typing_extensions import TypedDict
 from urllib3.exceptions import LocationParseError
 from urllib3.util import parse_url
 
@@ -101,7 +100,8 @@ class GCDTalker(ComicTalker):
     website: str = "https://www.comics.org/"
     logo_url: str = "https://files1.comics.org/static/img/gcd_logo.aaf0e64616e2.png"
     attribution: str = (
-        f"Data from <a href='{website}'>{name}</a> (<a href='http://creativecommons.org/licenses/by/3.0/'>CCA license</a>)"
+        f"Data from <a href='{website}'>{name}</a> (<a href='http://creativecommons.org/licenses/by/3.0/'>"
+        f"CCA license</a>)"
     )
     about: str = (
         f"<a href='{website}'>{name}™</a> is an ongoing international project to build a detailed "
@@ -125,6 +125,9 @@ class GCDTalker(ComicTalker):
         self.has_fts5: bool = False
         self.has_fts5_checked: bool = False
 
+        self.nn_is_issue_one: bool = True
+        self.replace_nn_with_one: bool = False
+
     def register_settings(self, parser: settngs.Manager) -> None:
         parser.add_setting(
             "--gcd-use-series-start-as-volume",
@@ -139,6 +142,20 @@ class GCDTalker(ComicTalker):
             action=argparse.BooleanOptionalAction,
             display_name="Use the ongoing issue count",
             help='If a series is labelled as "ongoing", use the current issue count (otherwise empty)',
+        )
+        parser.add_setting(
+            "--gcd-nn-is-issue-one",
+            default=False,
+            action=argparse.BooleanOptionalAction,
+            display_name="Auto-tag: Issue number of 'nn' are considered as 1 (TPB etc.)",
+            help="Single issues such as TPB are given the issue number 'nn', consider those as issue 1 when using auto-tag",
+        )
+        parser.add_setting(
+            "--gcd-replace-nn-with-one",
+            default=False,
+            action=argparse.BooleanOptionalAction,
+            display_name="Replace issue number '[nn]' with '1' (only on final issue tagging)",
+            help="Replaces the issue number '[nn]' with a '1'. (Will not show in issue window etc.)",
         )
         parser.add_setting(
             "--gcd-prefer-story-titles",
@@ -195,6 +212,8 @@ class GCDTalker(ComicTalker):
         settings = super().parse_settings(settings)
 
         self.use_series_start_as_volume = settings["gcd_use_series_start_as_volume"]
+        self.nn_is_issue_one = settings["gcd_nn_is_issue_one"]
+        self.replace_nn_with_one = settings["gcd_replace_nn_with_one"]
         self.prefer_story_titles = settings["gcd_prefer_story_titles"]
         self.combine_notes = settings["gcd_combine_notes"]
         self.use_ongoing_issue_count = settings["gcd_use_ongoing"]
@@ -459,6 +478,28 @@ class GCDTalker(ComicTalker):
 
         self.check_create_index()
 
+        sql_search: str = ""
+
+        sql_search_main: str = """SELECT gcd_issue.id AS 'id', gcd_issue.key_date AS 'key_date', gcd_issue.number AS
+                        'number', gcd_issue.title AS 'issue_title', gcd_issue.series_id AS 'series_id',
+                        GROUP_CONCAT(CASE WHEN gcd_story.title IS NOT NULL AND gcd_story.title != '' THEN
+                        gcd_story.title END, '\n') AS 'story_titles'
+                        FROM gcd_issue
+                        LEFT JOIN gcd_story ON gcd_story.issue_id=gcd_issue.id AND gcd_story.type_id=19
+                        WHERE gcd_issue.series_id=? """
+
+        sql_search_issues: str = "AND gcd_issue.number=? AND (gcd_issue.key_date LIKE ? OR gcd_issue.key_date='') "
+
+        sql_search_issues_nn: str = """AND (gcd_issue.number=? OR gcd_issue.number='[nn]') AND
+                        (gcd_issue.key_date LIKE ? OR gcd_issue.key_date='') """
+
+        sql_search_group: str = "GROUP BY gcd_issue.number;"
+
+        if self.nn_is_issue_one and issue_number == "1":
+            sql_search = sql_search_main + sql_search_issues_nn + sql_search_group
+        else:
+            sql_search = sql_search_main + sql_search_issues + sql_search_group
+
         try:
             with sqlite3.connect(self.db_file) as con:
                 con.row_factory = sqlite3.Row
@@ -469,15 +510,7 @@ class GCDTalker(ComicTalker):
                     series = self._fetch_series_data(int(vid))
 
                     cur.execute(
-                        "SELECT gcd_issue.id AS 'id', gcd_issue.key_date AS 'key_date', gcd_issue.number AS 'number', "
-                        "gcd_issue.title AS 'issue_title', gcd_issue.series_id AS 'series_id', "
-                        "GROUP_CONCAT(CASE WHEN gcd_story.title IS NOT NULL AND gcd_story.title != '' THEN "
-                        "gcd_story.title END, '\n') AS 'story_titles' "
-                        "FROM gcd_issue "
-                        "LEFT JOIN gcd_story ON gcd_story.issue_id=gcd_issue.id AND gcd_story.type_id=19 "
-                        "WHERE gcd_issue.series_id=? "
-                        "AND gcd_issue.number=? AND (gcd_issue.key_date LIKE ? OR gcd_issue.key_date='') "
-                        "GROUP BY gcd_issue.number;",
+                        sql_search,
                         [vid, issue_number, year_search],
                     )
 
@@ -791,6 +824,18 @@ class GCDTalker(ComicTalker):
 
     def _fetch_issue_data(self, series_id: int, issue_number: str) -> GenericMetadata:
         # Find the id of the issue and pass it along
+
+        sql_query: str = ""
+        sql_base: str = """SELECT gcd_issue.id AS 'id'
+                    FROM gcd_issue """
+        sql_where: str = "WHERE gcd_issue.series_id=? AND gcd_issue.number=?"
+        sql_where_nn: str = "WHERE gcd_issue.series_id=? AND gcd_issue.number=? OR gcd_issue.number='[nn]'"
+
+        if self.nn_is_issue_one and issue_number == "1":
+            sql_query = sql_base + sql_where_nn
+        else:
+            sql_query = sql_base + sql_where
+
         try:
             with sqlite3.connect(self.db_file) as con:
                 con.row_factory = sqlite3.Row
@@ -798,9 +843,7 @@ class GCDTalker(ComicTalker):
                 cur = con.cursor()
 
                 cur.execute(
-                    "SELECT gcd_issue.id AS 'id' "
-                    "FROM gcd_issue "
-                    "WHERE gcd_issue.series_id=? AND gcd_issue.number=?",
+                    sql_query,
                     [series_id, issue_number],
                 )
                 row = cur.fetchone()
@@ -918,9 +961,13 @@ class GCDTalker(ComicTalker):
             issue_id=utils.xlate(issue["id"]),
             series_id=utils.xlate(series["id"]),
             publisher=utils.xlate(series.get("publisher_name")),
-            issue=utils.xlate(IssueString(issue.get("number")).as_string()),
             series=utils.xlate(series["name"]),
         )
+        issue_number = utils.xlate(IssueString(issue.get("number")).as_string())
+        if self.replace_nn_with_one and issue_number == "[nn]":
+            md.issue = "1"
+        else:
+            md.issue = issue_number
 
         md._cover_image = issue.get("image")
         md._alternate_images = issue.get("alt_image_urls")
