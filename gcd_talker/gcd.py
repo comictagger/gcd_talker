@@ -23,7 +23,7 @@ import logging
 import pathlib
 import re
 import sqlite3
-from typing import Any, Callable
+from typing import Any, Callable, TypedDict
 from urllib.parse import urljoin
 
 import requests
@@ -37,7 +37,6 @@ from comictalker.comiccacher import Issue as CCIssue
 from comictalker.comiccacher import Series as CCSeries
 from comictalker.comictalker import ComicTalker, TalkerDataError, TalkerNetworkError
 from pyrate_limiter import Limiter, RequestRate
-from typing_extensions import TypedDict
 from urllib3.exceptions import LocationParseError
 from urllib3.util import parse_url
 
@@ -590,8 +589,11 @@ class GCDTalker(ComicTalker):
                 else:
                     variants.append(src)
         else:
-            # TODO check for cloudflare activation and log
-            logger.debug(f"No image found for ID: {issue_id}")
+            cf_challenge = covers_page.findAll(id="challenge-error-title")
+            if cf_challenge:
+                logger.info(f"CloudFlare active, cannot access image for ID: {issue_id}")
+            else:
+                logger.info(f"No image found for ID: {issue_id}")
 
         return cover, variants
 
