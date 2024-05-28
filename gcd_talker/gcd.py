@@ -623,8 +623,11 @@ class GCDTalker(ComicTalker):
                 else:
                     variants.append(src)
         else:
-            # TODO check for cloudflare activation and log
-            logger.debug(f"No image found for ID: {issue_id}")
+            cf_challenge = covers_page.findAll(id="challenge-error-title")
+            if cf_challenge:
+                logger.info(f"CloudFlare active, cannot access image for ID: {issue_id}")
+            else:
+                logger.info(f"No image found for ID: {issue_id}")
 
         return cover, variants
 
