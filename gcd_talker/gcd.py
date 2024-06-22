@@ -1052,4 +1052,6 @@ class GCDTalker(ComicTalker):
 
         md.maturity_rating = issue.get("maturity_rating")
 
+        md.imprint = issue.get("imprint")
+
         return md
