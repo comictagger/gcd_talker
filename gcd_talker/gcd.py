@@ -30,7 +30,7 @@ import requests
 import settngs
 from bs4 import BeautifulSoup
 from comicapi import utils
-from comicapi.genericmetadata import ComicSeries, GenericMetadata, TagOrigin
+from comicapi.genericmetadata import ComicSeries, GenericMetadata, MetadataOrigin
 from comicapi.issuestring import IssueString
 from comictalker.comiccacher import ComicCacher
 from comictalker.comiccacher import Issue as CCIssue
@@ -960,7 +960,7 @@ class GCDTalker(ComicTalker):
 
     def _map_comic_issue_to_metadata(self, issue: GCDIssue, series: GCDSeries) -> GenericMetadata:
         md = GenericMetadata(
-            tag_origin=TagOrigin(self.id, self.name),
+            data_origin=MetadataOrigin(self.id, self.name),
             issue_id=utils.xlate(issue["id"]),
             series_id=utils.xlate(series["id"]),
             publisher=utils.xlate(series.get("publisher_name")),
