@@ -65,6 +65,7 @@ class GCDIssue(TypedDict, total=False):
     series_id: int
     issue_notes: str
     volume: int
+    imprint: str
     price: str
     isbn: str
     maturity_rating: str
@@ -736,6 +737,7 @@ class GCDTalker(ComicTalker):
             gcd_issue["volume"] = row_dict["volume"]
             gcd_issue["price"] = row_dict["price"]
             gcd_issue["isbn"] = row_dict["isbn"]
+            gcd_issue["imprint"] = row_dict["imprint"]
             gcd_issue["maturity_rating"] = row_dict["maturity_rating"]
             gcd_issue["characters"] = (
                 row_dict["characters"].split("; ") if "characters" in row_dict and row_dict["characters"] else []
@@ -906,7 +908,17 @@ class GCDTalker(ComicTalker):
                     "GROUP_CONCAT(CASE WHEN gcd_story.synopsis IS NOT NULL AND gcd_story.synopsis != '' THEN "
                     "gcd_story.synopsis END,'\n\n') AS 'synopses', "
                     "GROUP_CONCAT(CASE WHEN gcd_story.id IS NOT NULL AND gcd_story.id != '' THEN "
-                    "gcd_story.id END, '\n') AS 'story_ids' "
+                    "gcd_story.id END, '\n') AS 'story_ids', "
+                    "(SELECT GROUP_CONCAT(gcd_brand_group.name, '; ') "
+                    "from gcd_issue "
+                    "LEFT JOIN gcd_brand ON gcd_issue.brand_id=gcd_brand.id "
+                    "LEFT JOIN gcd_brand_emblem_group ON gcd_brand.id=gcd_brand_emblem_group.brand_id "
+                    "LEFT JOIN gcd_brand_group ON gcd_brand_emblem_group.brandgroup_id=gcd_brand_group.id "
+                    "LEFT JOIN gcd_series ON gcd_issue.series_id=gcd_series.id "
+                    "LEFT JOIN gcd_publisher ON gcd_series.publisher_id=gcd_publisher.id "
+                    "WHERE gcd_issue.id=? "
+                    "and gcd_publisher.name is not gcd_brand_group.name "
+                    ") as 'imprint' "
                     "FROM gcd_issue "
                     "LEFT JOIN gcd_story ON gcd_story.issue_id=gcd_issue.id AND gcd_story.type_id=19 "
                     "LEFT JOIN gcd_indicia_publisher ON gcd_issue.indicia_publisher_id=gcd_indicia_publisher.id "
@@ -915,7 +927,7 @@ class GCDTalker(ComicTalker):
                     "LEFT JOIN stddata_language ON gcd_series.language_id=stddata_language.id "
                     "WHERE gcd_issue.id=? "
                     "GROUP BY gcd_issue.id",
-                    [issue_id],
+                    [issue_id, issue_id],
                 )
                 row = cur.fetchone()
 
@@ -1039,5 +1051,7 @@ class GCDTalker(ComicTalker):
         md.format = self._match_format(series.get("format", ""))
 
         md.maturity_rating = issue.get("maturity_rating")
+
+        md.imprint = issue.get("imprint")
 
         return md
