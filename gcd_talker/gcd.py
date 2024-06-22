@@ -23,21 +23,20 @@ import logging
 import pathlib
 import re
 import sqlite3
-from typing import Any, Callable
+from typing import Any, Callable, TypedDict
 from urllib.parse import urljoin
 
 import requests
 import settngs
 from bs4 import BeautifulSoup
 from comicapi import utils
-from comicapi.genericmetadata import ComicSeries, GenericMetadata, TagOrigin
+from comicapi.genericmetadata import ComicSeries, GenericMetadata, MetadataOrigin
 from comicapi.issuestring import IssueString
 from comictalker.comiccacher import ComicCacher
 from comictalker.comiccacher import Issue as CCIssue
 from comictalker.comiccacher import Series as CCSeries
 from comictalker.comictalker import ComicTalker, TalkerDataError, TalkerNetworkError
 from pyrate_limiter import Limiter, RequestRate
-from typing_extensions import TypedDict
 from urllib3.exceptions import LocationParseError
 from urllib3.util import parse_url
 
@@ -914,7 +913,7 @@ class GCDTalker(ComicTalker):
 
     def _map_comic_issue_to_metadata(self, issue: GCDIssue, series: GCDSeries) -> GenericMetadata:
         md = GenericMetadata(
-            tag_origin=TagOrigin(self.id, self.name),
+            data_origin=MetadataOrigin(self.id, self.name),
             issue_id=utils.xlate(issue["id"]),
             series_id=utils.xlate(series["id"]),
             publisher=utils.xlate(series.get("publisher_name")),
