@@ -832,7 +832,7 @@ class GCDTalker(ComicTalker):
         sql_base: str = """SELECT gcd_issue.id AS 'id'
                     FROM gcd_issue """
         sql_where: str = "WHERE gcd_issue.series_id=? AND gcd_issue.number=?"
-        sql_where_nn: str = "WHERE gcd_issue.series_id=? AND gcd_issue.number=? OR gcd_issue.number='[nn]'"
+        sql_where_nn: str = "WHERE gcd_issue.series_id=? AND (gcd_issue.number=? OR gcd_issue.number='[nn]')"
 
         if self.nn_is_issue_one and issue_number == "1":
             sql_query = sql_base + sql_where_nn
