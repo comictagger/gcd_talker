@@ -568,21 +568,20 @@ class GCDTalker(ComicTalker):
         else:
             return None
 
-    def _find_series_image(self, series_id: int) -> str:
+    def _find_series_image(self, con: sqlite3.Connection, series_id: int) -> str:
         """Find the id of the first issue and get the image url"""
         issue_id = None
         cover = ""
         try:
-            with sqlite3.connect(self.db_file) as con:
-                con.row_factory = sqlite3.Row
-                con.text_factory = str
-                cur = con.cursor()
+            con.row_factory = sqlite3.Row
+            con.text_factory = str
+            cur = con.cursor()
 
-                cur.execute(
-                    "SELECT gcd_series.first_issue_id " "FROM gcd_series " "WHERE gcd_series.id=?",
-                    [series_id],
-                )
-                issue_id = cur.fetchone()[0]
+            cur.execute(
+                "SELECT gcd_series.first_issue_id " "FROM gcd_series " "WHERE gcd_series.id=?",
+                [series_id],
+            )
+            issue_id = cur.fetchone()[0]
 
         except sqlite3.DataError as e:
             logger.debug(f"DB data error: {e}")
@@ -632,50 +631,49 @@ class GCDTalker(ComicTalker):
 
         return cover, variants
 
-    def _find_issue_credits(self, issue_id: int, story_id_list: list[str]) -> list[GCDCredit]:
+    def _find_issue_credits(self, con: sqlite3.Connection, issue_id: int, story_id_list: list[str]) -> list[GCDCredit]:
         credit_results = []
         # First get the issue table credits
         try:
-            with sqlite3.connect(self.db_file) as con:
-                con.row_factory = sqlite3.Row
-                con.text_factory = str
-                cur = con.cursor()
+            con.row_factory = sqlite3.Row
+            con.text_factory = str
+            cur = con.cursor()
+            cur.execute(
+                "SELECT gcd_issue_credit.credit_name AS 'role', gcd_creator_name_detail.name "
+                "FROM gcd_issue_credit "
+                "INNER JOIN gcd_creator_name_detail ON gcd_issue_credit.creator_id=gcd_creator_name_detail.id "
+                "WHERE gcd_issue_credit.issue_id=?",
+                [issue_id],
+            )
+            rows = cur.fetchall()
+
+            for record in rows:
+                result = GCDCredit(
+                    name=record[1],
+                    gcd_role=record[0],
+                )
+
+                credit_results.append(result)
+
+            # Get story table credits
+            for story_id in story_id_list:
                 cur.execute(
-                    "SELECT gcd_issue_credit.credit_name AS 'role', gcd_creator_name_detail.name "
-                    "FROM gcd_issue_credit "
-                    "INNER JOIN gcd_creator_name_detail ON gcd_issue_credit.creator_id=gcd_creator_name_detail.id "
-                    "WHERE gcd_issue_credit.issue_id=?",
-                    [issue_id],
+                    "SELECT gcd_creator_name_detail.name, gcd_credit_type.name "
+                    "FROM gcd_story_credit "
+                    "INNER JOIN gcd_credit_type ON gcd_credit_type.id=gcd_story_credit.credit_type_id "
+                    "INNER JOIN gcd_creator_name_detail ON gcd_creator_name_detail.id=gcd_story_credit.creator_id "
+                    "WHERE gcd_story_credit.story_id=?",
+                    [int(story_id)],
                 )
                 rows = cur.fetchall()
 
                 for record in rows:
                     result = GCDCredit(
-                        name=record[1],
-                        gcd_role=record[0],
+                        name=record[0],
+                        gcd_role=record[1],
                     )
 
                     credit_results.append(result)
-
-                # Get story table credits
-                for story_id in story_id_list:
-                    cur.execute(
-                        "SELECT gcd_creator_name_detail.name, gcd_credit_type.name "
-                        "FROM gcd_story_credit "
-                        "INNER JOIN gcd_credit_type ON gcd_credit_type.id=gcd_story_credit.credit_type_id "
-                        "INNER JOIN gcd_creator_name_detail ON gcd_creator_name_detail.id=gcd_story_credit.creator_id "
-                        "WHERE gcd_story_credit.story_id=?",
-                        [int(story_id)],
-                    )
-                    rows = cur.fetchall()
-
-                    for record in rows:
-                        result = GCDCredit(
-                            name=record[0],
-                            gcd_role=record[1],
-                        )
-
-                        credit_results.append(result)
 
         except sqlite3.DataError as e:
             logger.debug(f"DB data error: {e}")
@@ -798,7 +796,7 @@ class GCDTalker(ComicTalker):
                 image = ""
                 cover_download = False
                 if self.download_gui_covers:
-                    image = self._find_series_image(series_id)
+                    image = self._find_series_image(con, series_id)
                     cover_download = True
 
                 result = GCDSeries(
@@ -945,7 +943,7 @@ class GCDTalker(ComicTalker):
             raise TalkerDataError(self.name, 0, str(e))
 
         # Add credits
-        issue_result["credits"] = self._find_issue_credits(issue_id, issue_result["story_ids"])
+        issue_result["credits"] = self._find_issue_credits(con, issue_id, issue_result["story_ids"])
 
         # Add covers
         if self.download_gui_covers:
