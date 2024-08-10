@@ -221,7 +221,15 @@ class GCDTalker(ComicTalker):
         self.currency = settings["gcd_currency"]
         self.download_gui_covers = settings["gcd_gui_covers"]
         self.download_tag_covers = settings["gcd_tag_covers"]
+
+        # Reset DB tests for FTS and index in case of a change to a "clean" DB
+        old_db_file = self.db_file
         self.db_file = settings["gcd_filepath"]
+        if self.db_file != old_db_file:
+            self.has_issue_id_type_id_index = False
+            self.has_fts5 = False
+            self.has_fts5_checked = False
+
         return settings
 
     def check_status(self, settings: dict[str, Any]) -> tuple[str, bool]:
