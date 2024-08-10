@@ -717,17 +717,19 @@ class GCDTalker(ComicTalker):
         # Convert for attribute access
         row_dict = dict(row)
 
+        # Reverse story titles as they cannot be ordered in SQL query
+        story_titles: list[str] = []
+        if row_dict["story_titles"] is not None:
+            story_titles = row_dict["story_titles"].split("\n")
+            story_titles.reverse()
+
         gcd_issue = GCDIssue(
             id=row_dict["id"],
             key_date=row_dict["key_date"],
             number=row_dict["number"],
             issue_title=row_dict["issue_title"],
             series_id=row_dict["series_id"],
-            story_titles=(
-                row_dict["story_titles"].split("\n")
-                if "story_titles" in row_dict and row_dict["story_titles"] is not None
-                else []
-            ),
+            story_titles=story_titles,
             synopses=(
                 row_dict["synopses"].split("\n\n")
                 if "synopses" in row_dict and row_dict["synopses"] is not None
