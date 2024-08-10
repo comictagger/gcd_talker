@@ -444,8 +444,8 @@ class GCDTalker(ComicTalker):
                     "ELSE NULL END, '\n') AS 'story_titles' "
                     "FROM gcd_issue "
                     "LEFT JOIN gcd_story ON gcd_story.issue_id = gcd_issue.id AND gcd_story.type_id = 19 "
-                    "WHERE gcd_issue.series_id = ? "
-                    "GROUP BY gcd_issue.number;",
+                    "WHERE gcd_issue.series_id = ? AND gcd_issue.variant_of_id IS NULL "
+                    "GROUP BY gcd_issue.id;",
                     [int(series_id)],
                 )
                 rows = cur.fetchall()
@@ -487,14 +487,14 @@ class GCDTalker(ComicTalker):
                         gcd_story.title END, '\n') AS 'story_titles'
                         FROM gcd_issue
                         LEFT JOIN gcd_story ON gcd_story.issue_id=gcd_issue.id AND gcd_story.type_id=19
-                        WHERE gcd_issue.series_id=? """
+                        WHERE gcd_issue.series_id=? AND gcd_issue.variant_of_id IS NULL """
 
         sql_search_issues: str = "AND gcd_issue.number=? AND (gcd_issue.key_date LIKE ? OR gcd_issue.key_date='') "
 
         sql_search_issues_nn: str = """AND (gcd_issue.number=? OR gcd_issue.number='[nn]') AND
                         (gcd_issue.key_date LIKE ? OR gcd_issue.key_date='') """
 
-        sql_search_group: str = "GROUP BY gcd_issue.number;"
+        sql_search_group: str = "GROUP BY gcd_issue.id;"
 
         if self.nn_is_issue_one and issue_number == "1":
             sql_search = sql_search_main + sql_search_issues_nn + sql_search_group
@@ -831,8 +831,7 @@ class GCDTalker(ComicTalker):
         # Find the id of the issue and pass it along
 
         sql_query: str = ""
-        sql_base: str = """SELECT gcd_issue.id AS 'id'
-                    FROM gcd_issue """
+        sql_base: str = "SELECT gcd_issue.id AS 'id' FROM gcd_issue "
         sql_where: str = "WHERE gcd_issue.series_id=? AND gcd_issue.number=?"
         sql_where_nn: str = "WHERE gcd_issue.series_id=? AND (gcd_issue.number=? OR gcd_issue.number='[nn]')"
 
@@ -851,10 +850,18 @@ class GCDTalker(ComicTalker):
                     sql_query,
                     [series_id, issue_number],
                 )
-                row = cur.fetchone()
+                row = cur.fetchall()
 
-                if row["id"]:
-                    return self._fetch_issue_data_by_issue_id(row["id"])
+                # Expect one result however there are exception: "nn" for issue number and new volumes restarting issue
+                # number back to 1 are possible therefore, take the first result and log the remainder
+                if len(row) > 1:
+                    logger.warning(
+                        f"More than ONE issue found for: Series ID: {series_id}, Issue Number: "
+                        f"{issue_number}. Using first result.\n"
+                        f"All result IDs: {', '.join([str(i_id['id']) for i_id in row])}"
+                    )
+                if row[0]["id"]:
+                    return self._fetch_issue_data_by_issue_id(row[0]["id"])
 
         except sqlite3.DataError as e:
             logger.debug(f"DB data error: {e}")
