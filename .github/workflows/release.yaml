@@ -32,7 +32,9 @@ jobs:
       - name: Build and install wheel
         run: |
           tox run -m build
-          python -m pip install dist/*.whl
+          python -m pip install dist/*.whl -t build
+          cd build
+          zip -x "*/__pycache__/*" -r ../dist/${{ github.event.repository.name }}-plugin-${{ github.ref_name }}.zip *
 
       - name: "Publish distribution 📦 to PyPI"
         if: startsWith(github.ref, 'refs/tags/')
@@ -53,3 +55,4 @@ jobs:
           draft: false
           files: |
             dist/*.whl
+            dist/*.zip
