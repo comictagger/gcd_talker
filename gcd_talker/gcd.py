@@ -448,8 +448,8 @@ class GCDTalker(ComicTalker):
                 cur.execute(
                     "SELECT gcd_issue.id AS 'id', gcd_issue.number AS 'number', gcd_issue.key_date AS 'key_date',"
                     " gcd_issue.title AS 'issue_title', gcd_issue.series_id AS 'series_id', "
-                    "GROUP_CONCAT(CASE WHEN gcd_story.title IS NOT NULL AND gcd_story.title != '' THEN gcd_story.title "
-                    "ELSE NULL END, '\n') AS 'story_titles' "
+                    "GROUP_CONCAT(CASE WHEN gcd_story.title IS NOT NULL AND gcd_story.title != '' THEN "
+                    "gcd_story.sequence_number || '::' || gcd_story.title END, '\n') AS 'story_titles' "
                     "FROM gcd_issue "
                     "LEFT JOIN gcd_story ON gcd_story.issue_id = gcd_issue.id AND gcd_story.type_id = 19 "
                     "WHERE gcd_issue.series_id = ? AND gcd_issue.variant_of_id IS NULL "
@@ -492,7 +492,7 @@ class GCDTalker(ComicTalker):
         sql_search_main: str = """SELECT gcd_issue.id AS 'id', gcd_issue.key_date AS 'key_date', gcd_issue.number AS
                         'number', gcd_issue.title AS 'issue_title', gcd_issue.series_id AS 'series_id',
                         GROUP_CONCAT(CASE WHEN gcd_story.title IS NOT NULL AND gcd_story.title != '' THEN
-                        gcd_story.title END, '\n') AS 'story_titles'
+                        gcd_story.sequence_number || '::' || gcd_story.title END, '\n') AS 'story_titles'
                         FROM gcd_issue
                         LEFT JOIN gcd_story ON gcd_story.issue_id=gcd_issue.id AND gcd_story.type_id=19
                         WHERE gcd_issue.series_id=? AND gcd_issue.variant_of_id IS NULL """
@@ -546,6 +546,20 @@ class GCDTalker(ComicTalker):
             raise TalkerDataError(self.name, 0, str(e))
 
         return results
+
+    def _split_issue_titles(self, concated_titles: str) -> list[str]:
+        titles_matrix: list[list[str]] = []
+        if concated_titles:
+            titles = concated_titles.split("\n")
+
+            for title in titles:
+                split_title = title.split("::")
+                titles_matrix.append([split_title[0], split_title[1]])
+            titles_matrix.sort()
+
+            return [title_mat[1] for title_mat in titles_matrix]
+
+        return []
 
     def _match_format(self, string: str) -> str | None:
         # The publishing_format field is a free-text mess, try and make something useful
@@ -717,19 +731,13 @@ class GCDTalker(ComicTalker):
         # Convert for attribute access
         row_dict = dict(row)
 
-        # Reverse story titles as they cannot be ordered in SQL query
-        story_titles: list[str] = []
-        if row_dict["story_titles"] is not None:
-            story_titles = row_dict["story_titles"].split("\n")
-            story_titles.reverse()
-
         gcd_issue = GCDIssue(
             id=row_dict["id"],
             key_date=row_dict["key_date"],
             number=row_dict["number"],
             issue_title=row_dict["issue_title"],
             series_id=row_dict["series_id"],
-            story_titles=story_titles,
+            story_titles=self._split_issue_titles(row_dict["story_titles"]),
             synopses=(
                 row_dict["synopses"].split("\n\n")
                 if "synopses" in row_dict and row_dict["synopses"] is not None
@@ -920,7 +928,7 @@ class GCDTalker(ComicTalker):
                     "stddata_country.name AS 'country', stddata_country.code AS 'country_iso', "
                     "stddata_language.name AS 'language', stddata_language.code AS 'language_iso', "
                     "GROUP_CONCAT(CASE WHEN gcd_story.title IS NOT NULL AND gcd_story.title != '' THEN "
-                    "gcd_story.title END, '\n') AS 'story_titles',"
+                    "gcd_story.sequence_number || '::' || gcd_story.title END, '\n') AS 'story_titles',"
                     "GROUP_CONCAT(CASE WHEN gcd_story.genre IS NOT NULL AND gcd_story.genre != '' THEN "
                     "gcd_story.genre END, ';') AS 'genres',"
                     "GROUP_CONCAT(CASE WHEN gcd_story.synopsis IS NOT NULL AND gcd_story.synopsis != '' THEN "
