@@ -16,7 +16,7 @@ Due to occasional CloudFlare activation, images may not download.
 
 ## Installation
 
-The easiest installation method as of ComicTagger 1.6.0-alpha.23 for the plugin is to place the [release](https://github.com/mizaki/mangadex_talker/releases) zip file
+The easiest installation method as of ComicTagger 1.6.0-beta.1 for the plugin is to place the [release](https://github.com/mizaki/mangadex_talker/releases) zip file
 `gcd_talker-plugin-<version>.zip` into the [plugins](https://github.com/comictagger/comictagger/wiki/Installing-plugins) directory.
 
 ## Development Installation
