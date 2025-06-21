@@ -30,7 +30,7 @@ import requests
 import settngs
 from bs4 import BeautifulSoup
 from comicapi import utils
-from comicapi.genericmetadata import ComicSeries, GenericMetadata, MetadataOrigin
+from comicapi.genericmetadata import ComicSeries, GenericMetadata, ImageHash, MetadataOrigin
 from comicapi.issuestring import IssueString
 from comictalker.comiccacher import ComicCacher
 from comictalker.comiccacher import Issue as CCIssue
@@ -97,7 +97,7 @@ class GCDCredit(TypedDict):
 class GCDTalker(ComicTalker):
     name: str = "Grand Comics Database"
     id: str = "gcd"
-    comictagger_min_ver: str = "1.6.0a13"
+    comictagger_min_ver: str = "1.6.0b5"
     website: str = "https://www.comics.org/"
     logo_url: str = "https://files1.comics.org/static/img/gcd_logo.aaf0e64616e2.png"
     attribution: str = (
@@ -1010,8 +1010,9 @@ class GCDTalker(ComicTalker):
         else:
             md.issue = issue_number
 
-        md._cover_image = issue.get("image")
-        md._alternate_images = issue.get("alt_image_urls")
+        md._cover_image = ImageHash(URL=issue.get("image", ""), Hash=0, Kind="")
+        for alt in issue.get("alt_image_urls", []):
+            md._alternate_images.append(ImageHash(URL=alt, Hash=0, Kind=""))
 
         if issue.get("characters"):
             # Logan [disambiguation: Wolverine] - (name) James Howlett
