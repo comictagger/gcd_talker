@@ -35,7 +35,7 @@ from comicapi.issuestring import IssueString
 from comictalker.comiccacher import ComicCacher
 from comictalker.comiccacher import Issue as CCIssue
 from comictalker.comiccacher import Series as CCSeries
-from comictalker.comictalker import ComicTalker, TalkerDataError, TalkerNetworkError
+from comictalker.comictalker import ComicTalker, RLCallBack, TalkerDataError, TalkerNetworkError
 from pyrate_limiter import Limiter, RequestRate
 from urllib3.exceptions import LocationParseError
 from urllib3.util import parse_url
@@ -333,6 +333,8 @@ class GCDTalker(ComicTalker):
         refresh_cache: bool = False,
         literal: bool = False,
         series_match_thresh: int = 90,
+        *,
+        on_rate_limit: RLCallBack | None = None,
     ) -> list[ComicSeries]:
         sql_search: str = ""
         sql_search_fields: str = """SELECT gcd_series.id AS 'id', gcd_series.name AS 'series_name',
@@ -421,7 +423,12 @@ class GCDTalker(ComicTalker):
         return formatted_search_results
 
     def fetch_comic_data(
-        self, issue_id: str | None = None, series_id: str | None = None, issue_number: str = ""
+        self,
+        issue_id: str | None = None,
+        series_id: str | None = None,
+        issue_number: str = "",
+        *,
+        on_rate_limit: RLCallBack | None = None,
     ) -> GenericMetadata:
         self.check_db_filename_not_empty()
 
@@ -433,7 +440,9 @@ class GCDTalker(ComicTalker):
 
         return comic_data
 
-    def fetch_issues_in_series(self, series_id: str) -> list[GenericMetadata]:
+    def fetch_issues_in_series(
+        self, series_id: str, *, on_rate_limit: RLCallBack | None = None
+    ) -> list[GenericMetadata]:
         series = self._fetch_series_data(int(series_id))
 
         results: list[GCDIssue] = []
@@ -478,7 +487,7 @@ class GCDTalker(ComicTalker):
         return formatted_series_issues_result
 
     def fetch_issues_by_series_issue_num_and_year(
-        self, series_id_list: list[str], issue_number: str, year: int | None
+        self, series_id_list: list[str], issue_number: str, year: int | None, *, on_rate_limit: RLCallBack | None = None
     ) -> list[GenericMetadata]:
         results: list[GenericMetadata] = []
         year_search = "%"
@@ -774,7 +783,7 @@ class GCDTalker(ComicTalker):
 
         return gcd_issue
 
-    def fetch_series(self, series_id: str) -> ComicSeries:
+    def fetch_series(self, series_id: str, *, on_rate_limit: RLCallBack | None = None) -> ComicSeries:
         return self._format_search_results([self._fetch_series_data(int(series_id))])[0]
 
     def _fetch_series_data(self, series_id: int) -> GCDSeries:
