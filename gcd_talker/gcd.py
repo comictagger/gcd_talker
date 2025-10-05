@@ -36,7 +36,7 @@ from comictalker.comiccacher import ComicCacher
 from comictalker.comiccacher import Issue as CCIssue
 from comictalker.comiccacher import Series as CCSeries
 from comictalker.comictalker import ComicTalker, RLCallBack, TalkerDataError, TalkerNetworkError
-from pyrate_limiter import Limiter, RequestRate
+from comictalker.vendor.pyrate_limiter import Limiter, RequestRate
 from urllib3.exceptions import LocationParseError
 from urllib3.util import parse_url
 
@@ -97,7 +97,7 @@ class GCDCredit(TypedDict):
 class GCDTalker(ComicTalker):
     name: str = "Grand Comics Database"
     id: str = "gcd"
-    comictagger_min_ver: str = "1.6.0b5"
+    comictagger_min_ver: str = "1.6.0b7"
     website: str = "https://www.comics.org/"
     logo_url: str = "https://files1.comics.org/static/img/gcd_logo.aaf0e64616e2.png"
     attribution: str = (
