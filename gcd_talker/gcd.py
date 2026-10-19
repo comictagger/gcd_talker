@@ -23,7 +23,8 @@ import logging
 import pathlib
 import re
 import sqlite3
-from typing import Any, Callable, TypedDict
+from collections.abc import Callable
+from typing import Any, TypedDict
 from urllib.parse import urljoin
 
 import requests
